@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "projectName": "CommonModules",
+  "primaryDocument": "CommonModules",
+  "documents": {
+    "CommonModules": {
+      "kind": "excel",
+      "sourcePath": "src/CommonModules",
+      "templatePath": "src/CommonModules/CommonModules.xlsm",
+      "binPath": "bin/CommonModules.xlsm",
+      "publishPath": "publish/CommonModules.xlsm",
+      "commonModules": [
+        {
+          "name": "ApplicationScreenUpdateManager",
+          "requested": true
+        },
+        {
+          "name": "ArrayObject",
+          "requested": true
+        },
+        {
+          "name": "IEnumerator",
+          "requested": true
+        },
+        {
+          "name": "Enumerator",
+          "requested": true
+        },
+        {
+          "name": "IComparable",
+          "requested": true
+        },
+        {
+          "name": "IDuplicateCheckable",
+          "requested": true
+        },
+        {
+          "name": "IElementTypeProvider",
+          "requested": true
+        },
+        {
+          "name": "IEquatable",
+          "requested": true
+        },
+        {
+          "name": "IStringable",
+          "requested": true
+        },
+        {
+          "name": "ObjectSet",
+          "requested": true
+        },
+        {
+          "name": "ObjectList",
+          "requested": true
+        },
+        {
+          "name": "WorksheetRangeBoundsEnumerator",
+          "requested": true
+        },
+        {
+          "name": "WorksheetRangeBounds",
+          "requested": true
+        },
+        {
+          "name": "DebugInformation",
+          "requested": true
+        },
+        {
+          "name": "ProgressStatus",
+          "requested": true
+        },
+        {
+          "name": "CommonRunStateManager",
+          "requested": true
+        },
+        {
+          "name": "Fx_Common",
+          "requested": true
+        },
+        {
+          "name": "IWorkbookService",
+          "requested": true
+        },
+        {
+          "name": "IWorksheetService",
+          "requested": true
+        },
+        {
+          "name": "WorkbookService",
+          "requested": true
+        },
+        {
+          "name": "WorksheetService",
+          "requested": true
+        },
+        {
+          "name": "Lib_Common",
+          "requested": true
+        },
+        {
+          "name": "ObjectDictionary",
+          "requested": true
+        },
+        {
+          "name": "WorksheetVirtualTableEnumerator",
+          "requested": true
+        },
+        {
+          "name": "WorksheetVirtualTable",
+          "requested": true
+        },
+        {
+          "name": "Lib_CommonConstructor",
+          "requested": true
+        },
+        {
+          "name": "Counter",
+          "requested": true
+        },
+        {
+          "name": "CounterSet",
+          "requested": true
+        },
+        {
+          "name": "IFileSystemService",
+          "requested": true
+        },
+        {
+          "name": "ITextFileEntity",
+          "requested": true
+        },
+        {
+          "name": "ITextFileService",
+          "requested": true
+        },
+        {
+          "name": "IUserInputSheet",
+          "requested": true
+        },
+        {
+          "name": "FileSystemService",
+          "requested": true
+        },
+        {
+          "name": "Lib_FileSystem",
+          "requested": true
+        },
+        {
+          "name": "UserInputSheet",
+          "requested": true
+        },
+        {
+          "name": "Lib_InputSheet",
+          "requested": true
+        },
+        {
+          "name": "Lib_IPv4",
+          "requested": true
+        },
+        {
+          "name": "TextFileEntity",
+          "requested": true
+        },
+        {
+          "name": "TextFileService",
+          "requested": true
+        },
+        {
+          "name": "Lib_TextFile",
+          "requested": true
+        },
+        {
+          "name": "UnitTestAssert",
+          "requested": true
+        },
+        {
+          "name": "Lib_UnitTest",
+          "requested": true
+        },
+        {
+          "name": "TestDoubleCallRecord",
+          "requested": true
+        },
+        {
+          "name": "TestDoubleVariantKeyBuilder",
+          "requested": true
+        },
+        {
+          "name": "TestDoubleBehaviorStore",
+          "requested": true
+        },
+        {
+          "name": "FileSystemServiceTestDouble",
+          "requested": true
+        },
+        {
+          "name": "TextFileEntityTestDouble",
+          "requested": true
+        },
+        {
+          "name": "TextFileServiceTestDouble",
+          "requested": true
+        },
+        {
+          "name": "UserInputSheetTestDouble",
+          "requested": true
+        },
+        {
+          "name": "WorkbookServiceTestDouble",
+          "requested": true
+        },
+        {
+          "name": "WorksheetServiceTestDouble",
+          "requested": true
+        }
+      ],
+      "references": [
+        {
+          "name": "Visual Basic For Applications"
+        },
+        {
+          "name": "Microsoft Excel 16.0 Object Library"
+        },
+        {
+          "name": "OLE Automation"
+        },
+        {
+          "name": "Microsoft Office 16.0 Object Library"
+        },
+        {
+          "name": "Microsoft Scripting Runtime"
+        },
+        {
+          "name": "Microsoft VBScript Regular Expressions 5.5"
+        }
+      ]
+    }
+  },
+  "commonModulesRepository": "../common_modules_repo",
+  "commandDefaults": {
+    "test": {
+      "format": "text"
+    }
+  }
+}

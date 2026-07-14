@@ -1,0 +1,9 @@
+~$*.xls?
+*.lnk
+
+**/docs/api-reference/
+
+/AGENTS.md
+/docs/agents/
+/CommonModules/bin/
+/CommonModules/publish/

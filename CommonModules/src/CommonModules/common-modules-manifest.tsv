@@ -1,0 +1,55 @@
+# CommonModules dependency manifest.
+# Columns are ModuleFile, Categories, and Dependencies.
+# Categories and Dependencies are comma-separated when they contain multiple values.
+ModuleFile	Categories	Dependencies
+ApplicationScreenUpdateManager.cls	runtime-baseline	
+ArrayObject.cls	runtime-baseline	
+CommonRunStateManager.cls	runtime-baseline	DebugInformation.cls,ProgressStatus.cls
+DebugInformation.cls	runtime-baseline	ObjectList.cls,WorksheetRangeBounds.cls
+Enumerator.cls	runtime-baseline	IEnumerator.cls
+Fx_Common.bas	runtime-baseline,public-udf	
+IComparable.cls	runtime-baseline	
+IDuplicateCheckable.cls	runtime-baseline	
+IElementTypeProvider.cls	runtime-baseline	
+IEnumerator.cls	runtime-baseline	
+IEquatable.cls	runtime-baseline	
+IStringable.cls	runtime-baseline	
+IWorkbookService.cls	runtime-baseline	ObjectList.cls
+IWorksheetService.cls	runtime-baseline	ObjectList.cls,WorksheetRangeBounds.cls
+Lib_Common.bas	runtime-baseline	DebugInformation.cls,Enumerator.cls,IDuplicateCheckable.cls,IElementTypeProvider.cls,IEnumerator.cls,IEquatable.cls,IWorkbookService.cls,IWorksheetService.cls,ObjectList.cls,ObjectSet.cls,ProgressStatus.cls,WorkbookService.cls,WorksheetRangeBounds.cls,WorksheetService.cls
+Lib_CommonConstructor.bas	runtime-baseline	ObjectDictionary.cls,ObjectList.cls,ObjectSet.cls,WorksheetRangeBounds.cls,WorksheetVirtualTable.cls
+ObjectDictionary.cls	runtime-baseline	ObjectList.cls
+ObjectList.cls	runtime-baseline	ArrayObject.cls,Enumerator.cls,IComparable.cls,IDuplicateCheckable.cls,IElementTypeProvider.cls,IEnumerator.cls,IEquatable.cls,IStringable.cls,ObjectSet.cls
+ObjectSet.cls	runtime-baseline	Enumerator.cls,IComparable.cls,IDuplicateCheckable.cls,IElementTypeProvider.cls,IEnumerator.cls,IEquatable.cls,IStringable.cls,ObjectList.cls
+WorkbookService.cls	runtime-baseline	ApplicationScreenUpdateManager.cls,IWorkbookService.cls,IWorksheetService.cls,ObjectList.cls,WorksheetRangeBounds.cls
+WorksheetRangeBounds.cls	runtime-baseline	IEnumerator.cls,IEquatable.cls,IStringable.cls,ObjectList.cls,WorksheetRangeBoundsEnumerator.cls
+WorksheetRangeBoundsEnumerator.cls	runtime-baseline	IEnumerator.cls,WorksheetRangeBounds.cls
+WorksheetService.cls	runtime-baseline	IWorksheetService.cls,ObjectList.cls,WorksheetRangeBounds.cls
+WorksheetVirtualTable.cls	runtime-baseline	IEnumerator.cls,ObjectDictionary.cls,ObjectList.cls,WorksheetRangeBounds.cls,WorksheetVirtualTableEnumerator.cls
+WorksheetVirtualTableEnumerator.cls	runtime-baseline	IEnumerator.cls,WorksheetVirtualTable.cls
+Counter.cls	optional	
+CounterSet.cls	optional	Counter.cls
+IFileSystemService.cls	optional	
+ITextFileEntity.cls	optional	
+ITextFileService.cls	optional	ITextFileEntity.cls
+IUserInputSheet.cls	optional	WorksheetRangeBounds.cls
+Lib_FileSystem.bas	optional	IFileSystemService.cls,FileSystemService.cls
+Lib_InputSheet.bas	optional	IUserInputSheet.cls,UserInputSheet.cls,WorksheetRangeBounds.cls
+Lib_IPv4.bas	optional	
+Lib_TextFile.bas	optional	ITextFileService.cls,TextFileService.cls
+FileSystemService.cls	optional	IFileSystemService.cls
+ProgressStatus.cls	optional	
+TextFileEntity.cls	optional	ITextFileEntity.cls
+TextFileService.cls	optional	ITextFileEntity.cls,ITextFileService.cls,TextFileEntity.cls
+UserInputSheet.cls	optional	IEnumerator.cls,IUserInputSheet.cls,ObjectList.cls,WorksheetRangeBounds.cls
+Lib_UnitTest.bas	test-foundation	ApplicationScreenUpdateManager.cls,UnitTestAssert.cls
+UnitTestAssert.cls	test-foundation	IDuplicateCheckable.cls,IEquatable.cls
+TestDoubleBehaviorStore.cls	test-foundation	ObjectList.cls,TestDoubleCallRecord.cls,TestDoubleVariantKeyBuilder.cls
+TestDoubleCallRecord.cls	test-foundation	
+TestDoubleVariantKeyBuilder.cls	test-foundation	IDuplicateCheckable.cls,IEquatable.cls
+FileSystemServiceTestDouble.cls	test-double	IFileSystemService.cls,TestDoubleBehaviorStore.cls
+TextFileEntityTestDouble.cls	test-double	ITextFileEntity.cls,TestDoubleBehaviorStore.cls
+TextFileServiceTestDouble.cls	test-double	ITextFileEntity.cls,ITextFileService.cls,TestDoubleBehaviorStore.cls,TextFileEntity.cls,TextFileEntityTestDouble.cls
+UserInputSheetTestDouble.cls	test-double	IUserInputSheet.cls,TestDoubleBehaviorStore.cls,WorksheetRangeBounds.cls
+WorkbookServiceTestDouble.cls	test-double	IWorkbookService.cls,ObjectList.cls,TestDoubleBehaviorStore.cls
+WorksheetServiceTestDouble.cls	test-double	IWorksheetService.cls,ObjectList.cls,TestDoubleBehaviorStore.cls,WorksheetRangeBounds.cls
