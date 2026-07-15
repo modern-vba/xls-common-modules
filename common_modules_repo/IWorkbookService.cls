@@ -108,8 +108,49 @@ End Function
 '*
 '* @details
 '* Opens a workbook. If the file path is omitted, creates a new workbook.
-'* The source file is not locked.
+'* The original workbook file is not locked.
 Public Function OpenWorkbook(Optional ByVal FilePath As String = "") As String
+End Function
+
+'* Opens an original workbook file.
+'*
+'* @param FilePath File path.
+'* @param UpdateLinks [Optional] Value passed to Workbooks.Open. Default is Empty.
+'* @param ReadOnly [Optional] Value passed to Workbooks.Open. Default is False.
+'* @param Format [Optional] Value passed to Workbooks.Open. Default is Empty.
+'* @param Password [Optional] Value passed to Workbooks.Open. Default is Empty.
+'* @param WriteResPassword [Optional] Value passed to Workbooks.Open. Default is Empty.
+'* @param IgnoreReadOnlyRecommended [Optional] Value passed to Workbooks.Open. Default is False.
+'* @param Origin [Optional] Value passed to Workbooks.Open. Default is Empty.
+'* @param Delimiter [Optional] Value passed to Workbooks.Open. Default is Empty.
+'* @param Editable [Optional] Value passed to Workbooks.Open. Default is False.
+'* @param Notify [Optional] Value passed to Workbooks.Open. Default is False.
+'* @param Converter [Optional] Value passed to Workbooks.Open. Default is Empty.
+'* @param AddToMru [Optional] Value passed to Workbooks.Open. Default is False.
+'* @param LocalSetting [Optional] Value passed to Workbooks.Open Local. Default is False.
+'* @param CorruptLoad [Optional] Value passed to Workbooks.Open. Default is xlNormalLoad.
+'* @return Workbook name.
+'*
+'* @details
+'* Opens the original workbook file at FilePath through Workbooks.Open and hides the opened workbook window.
+'* FilePath is resolved relative to ThisWorkbook directory when it is relative.
+'* The active workbook and application screen-update state are restored after opening.
+Public Function OpenOriginalWorkbook( _
+        ByVal FilePath As String, _
+        Optional ByVal UpdateLinks As Variant = Empty, _
+        Optional ByVal ReadOnly As Variant = False, _
+        Optional ByVal Format As Variant = Empty, _
+        Optional ByVal Password As Variant = Empty, _
+        Optional ByVal WriteResPassword As Variant = Empty, _
+        Optional ByVal IgnoreReadOnlyRecommended As Variant = False, _
+        Optional ByVal Origin As Variant = Empty, _
+        Optional ByVal Delimiter As Variant = Empty, _
+        Optional ByVal Editable As Variant = False, _
+        Optional ByVal Notify As Variant = False, _
+        Optional ByVal Converter As Variant = Empty, _
+        Optional ByVal AddToMru As Variant = False, _
+        Optional ByVal LocalSetting As Variant = False, _
+        Optional ByVal CorruptLoad As Variant = xlNormalLoad) As String
 End Function
 
 '* Saves a workbook.

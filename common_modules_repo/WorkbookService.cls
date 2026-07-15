@@ -20,6 +20,24 @@ Implements IWorkbookService
 
 Private Const C_VBEXT_CT_DOCUMENT As Long = 100
 
+Private Type TOpenOriginalWorkbookArgs
+    FilePath As String
+    UpdateLinksValue As Variant
+    ReadOnlyValue As Variant
+    FormatValue As Variant
+    PasswordValue As Variant
+    WriteResPasswordValue As Variant
+    IgnoreReadOnlyRecommendedValue As Variant
+    OriginValue As Variant
+    DelimiterValue As Variant
+    EditableValue As Variant
+    NotifyValue As Variant
+    ConverterValue As Variant
+    AddToMruValue As Variant
+    LocalSettingValue As Variant
+    CorruptLoadValue As Variant
+End Type
+
 '* Gets the workbook name of ThisWorkbook.
 '*
 '* @return Workbook name of ThisWorkbook.
@@ -194,7 +212,7 @@ End Function
 '
 ' @details
 ' Opens a workbook. If FilePath is omitted, creates a new workbook.
-' Does not lock the original file.
+' Does not lock the original workbook file.
 Public Function OpenWorkbook(Optional ByVal FilePath As String = "") As String
     Dim app_state As ApplicationScreenUpdateManager
     Set app_state = New ApplicationScreenUpdateManager
@@ -242,6 +260,328 @@ Private Function IWorkbookService_OpenWorkbook(Optional ByVal FilePath As String
     IWorkbookService_OpenWorkbook = OpenWorkbook(FilePath:=FilePath)
 End Function
 
+' Opens an original workbook file.
+'
+' @param FilePath File path.
+' @param UpdateLinks [Optional] Value passed to Workbooks.Open. Default is Empty.
+' @param ReadOnly [Optional] Value passed to Workbooks.Open. Default is False.
+' @param Format [Optional] Value passed to Workbooks.Open. Default is Empty.
+' @param Password [Optional] Value passed to Workbooks.Open. Default is Empty.
+' @param WriteResPassword [Optional] Value passed to Workbooks.Open. Default is Empty.
+' @param IgnoreReadOnlyRecommended [Optional] Value passed to Workbooks.Open. Default is False.
+' @param Origin [Optional] Value passed to Workbooks.Open. Default is Empty.
+' @param Delimiter [Optional] Value passed to Workbooks.Open. Default is Empty.
+' @param Editable [Optional] Value passed to Workbooks.Open. Default is False.
+' @param Notify [Optional] Value passed to Workbooks.Open. Default is False.
+' @param Converter [Optional] Value passed to Workbooks.Open. Default is Empty.
+' @param AddToMru [Optional] Value passed to Workbooks.Open. Default is False.
+' @param LocalSetting [Optional] Value passed to Workbooks.Open Local. Default is False.
+' @param CorruptLoad [Optional] Value passed to Workbooks.Open. Default is xlNormalLoad.
+' @return Book name.
+'
+' @details
+' Opens the original workbook file at FilePath through Workbooks.Open and hides the opened workbook window.
+' FilePath is resolved relative to ThisWorkbook directory when it is relative.
+' The active workbook and application screen-update state are restored after opening.
+Public Function OpenOriginalWorkbook( _
+        ByVal FilePath As String, _
+        Optional ByVal UpdateLinks As Variant = Empty, _
+        Optional ByVal ReadOnly As Variant = False, _
+        Optional ByVal Format As Variant = Empty, _
+        Optional ByVal Password As Variant = Empty, _
+        Optional ByVal WriteResPassword As Variant = Empty, _
+        Optional ByVal IgnoreReadOnlyRecommended As Variant = False, _
+        Optional ByVal Origin As Variant = Empty, _
+        Optional ByVal Delimiter As Variant = Empty, _
+        Optional ByVal Editable As Variant = False, _
+        Optional ByVal Notify As Variant = False, _
+        Optional ByVal Converter As Variant = Empty, _
+        Optional ByVal AddToMru As Variant = False, _
+        Optional ByVal LocalSetting As Variant = False, _
+        Optional ByVal CorruptLoad As Variant = xlNormalLoad) As String
+
+    Dim app_state As ApplicationScreenUpdateManager
+    Set app_state = New ApplicationScreenUpdateManager
+
+    Dim current_active_workbook As Workbook
+    On Error Resume Next
+    Set current_active_workbook = ActiveWorkbook
+    Err.Clear
+    On Error GoTo ON_ERROR
+
+    Dim file_path As String
+    file_path = pGetAbsolutePath(FilePath)
+
+    Dim open_args As TOpenOriginalWorkbookArgs
+    open_args.FilePath = file_path
+    open_args.UpdateLinksValue = UpdateLinks
+    open_args.ReadOnlyValue = ReadOnly
+    open_args.FormatValue = Format
+    open_args.PasswordValue = Password
+    open_args.WriteResPasswordValue = WriteResPassword
+    open_args.IgnoreReadOnlyRecommendedValue = IgnoreReadOnlyRecommended
+    open_args.OriginValue = Origin
+    open_args.DelimiterValue = Delimiter
+    open_args.EditableValue = Editable
+    open_args.NotifyValue = Notify
+    open_args.ConverterValue = Converter
+    open_args.AddToMruValue = AddToMru
+    open_args.LocalSettingValue = LocalSetting
+    open_args.CorruptLoadValue = CorruptLoad
+
+    Dim workbook_obj As Workbook
+    Set workbook_obj = pOpenOriginalWorkbookObject(open_args)
+    ActiveWindow.Visible = False
+
+    If Not current_active_workbook Is Nothing Then Call current_active_workbook.Activate
+    Call app_state.Restore
+
+    OpenOriginalWorkbook = workbook_obj.Name
+    On Error GoTo 0
+    Exit Function
+
+ON_ERROR:
+    Dim err_num As Long: err_num = Err.Number
+    Dim err_source As String: err_source = Err.Source
+    Dim err_desc As String: err_desc = Err.Description
+    Dim err_help_file As String: err_help_file = Err.HelpFile
+    Dim err_help_context As Long: err_help_context = Err.HelpContext
+
+    On Error Resume Next
+    If Not current_active_workbook Is Nothing Then Call current_active_workbook.Activate
+    Call app_state.Restore
+    On Error GoTo 0
+
+    Err.Raise err_num, err_source, err_desc, err_help_file, err_help_context
+End Function
+Private Function IWorkbookService_OpenOriginalWorkbook( _
+        ByVal FilePath As String, _
+        Optional ByVal UpdateLinks As Variant = Empty, _
+        Optional ByVal ReadOnly As Variant = False, _
+        Optional ByVal Format As Variant = Empty, _
+        Optional ByVal Password As Variant = Empty, _
+        Optional ByVal WriteResPassword As Variant = Empty, _
+        Optional ByVal IgnoreReadOnlyRecommended As Variant = False, _
+        Optional ByVal Origin As Variant = Empty, _
+        Optional ByVal Delimiter As Variant = Empty, _
+        Optional ByVal Editable As Variant = False, _
+        Optional ByVal Notify As Variant = False, _
+        Optional ByVal Converter As Variant = Empty, _
+        Optional ByVal AddToMru As Variant = False, _
+        Optional ByVal LocalSetting As Variant = False, _
+        Optional ByVal CorruptLoad As Variant = xlNormalLoad) As String
+
+    IWorkbookService_OpenOriginalWorkbook = OpenOriginalWorkbook( _
+            FilePath:=FilePath, _
+            UpdateLinks:=UpdateLinks, _
+            ReadOnly:=ReadOnly, _
+            Format:=Format, _
+            Password:=Password, _
+            WriteResPassword:=WriteResPassword, _
+            IgnoreReadOnlyRecommended:=IgnoreReadOnlyRecommended, _
+            Origin:=Origin, _
+            Delimiter:=Delimiter, _
+            Editable:=Editable, _
+            Notify:=Notify, _
+            Converter:=Converter, _
+            AddToMru:=AddToMru, _
+            LocalSetting:=LocalSetting, _
+            CorruptLoad:=CorruptLoad)
+End Function
+
+' These private optionals intentionally omit defaults to forward public Empty values as COM missing arguments.
+Private Function pOpenOriginalWorkbookObject(ByRef OpenArgs As TOpenOriginalWorkbookArgs) As Workbook
+    Dim opened_workbook As Workbook
+
+    If IsEmpty(OpenArgs.UpdateLinksValue) Then
+        Set opened_workbook = pOpenOriginalWorkbookWithFormat(OpenArgs)
+    Else
+        Set opened_workbook = pOpenOriginalWorkbookWithFormat(OpenArgs, OpenArgs.UpdateLinksValue)
+    End If
+
+    Set pOpenOriginalWorkbookObject = opened_workbook
+End Function
+
+Private Function pOpenOriginalWorkbookWithFormat( _
+        ByRef OpenArgs As TOpenOriginalWorkbookArgs, _
+        Optional ByVal UpdateLinks As Variant) As Workbook
+
+    Dim opened_workbook As Workbook
+
+    If IsEmpty(OpenArgs.FormatValue) Then
+        Set opened_workbook = pOpenOriginalWorkbookWithPassword(OpenArgs, UpdateLinks)
+    Else
+        Set opened_workbook = pOpenOriginalWorkbookWithPassword(OpenArgs, UpdateLinks, OpenArgs.FormatValue)
+    End If
+
+    Set pOpenOriginalWorkbookWithFormat = opened_workbook
+End Function
+
+Private Function pOpenOriginalWorkbookWithPassword( _
+        ByRef OpenArgs As TOpenOriginalWorkbookArgs, _
+        Optional ByVal UpdateLinks As Variant, _
+        Optional ByVal Format As Variant) As Workbook
+
+    Dim opened_workbook As Workbook
+
+    If IsEmpty(OpenArgs.PasswordValue) Then
+        Set opened_workbook = pOpenOriginalWorkbookWithWriteResPassword(OpenArgs, UpdateLinks, Format)
+    Else
+        Set opened_workbook = pOpenOriginalWorkbookWithWriteResPassword( _
+                OpenArgs, _
+                UpdateLinks, _
+                Format, _
+                OpenArgs.PasswordValue)
+    End If
+
+    Set pOpenOriginalWorkbookWithPassword = opened_workbook
+End Function
+
+Private Function pOpenOriginalWorkbookWithWriteResPassword( _
+        ByRef OpenArgs As TOpenOriginalWorkbookArgs, _
+        Optional ByVal UpdateLinks As Variant, _
+        Optional ByVal Format As Variant, _
+        Optional ByVal Password As Variant) As Workbook
+
+    Dim opened_workbook As Workbook
+
+    If IsEmpty(OpenArgs.WriteResPasswordValue) Then
+        Set opened_workbook = pOpenOriginalWorkbookWithOrigin(OpenArgs, UpdateLinks, Format, Password)
+    Else
+        Set opened_workbook = pOpenOriginalWorkbookWithOrigin( _
+                OpenArgs, _
+                UpdateLinks, _
+                Format, _
+                Password, _
+                OpenArgs.WriteResPasswordValue)
+    End If
+
+    Set pOpenOriginalWorkbookWithWriteResPassword = opened_workbook
+End Function
+
+Private Function pOpenOriginalWorkbookWithOrigin( _
+        ByRef OpenArgs As TOpenOriginalWorkbookArgs, _
+        Optional ByVal UpdateLinks As Variant, _
+        Optional ByVal Format As Variant, _
+        Optional ByVal Password As Variant, _
+        Optional ByVal WriteResPassword As Variant) As Workbook
+
+    Dim opened_workbook As Workbook
+
+    If IsEmpty(OpenArgs.OriginValue) Then
+        Set opened_workbook = pOpenOriginalWorkbookWithDelimiter( _
+                OpenArgs, _
+                UpdateLinks, _
+                Format, _
+                Password, _
+                WriteResPassword)
+    Else
+        Set opened_workbook = pOpenOriginalWorkbookWithDelimiter( _
+                OpenArgs, _
+                UpdateLinks, _
+                Format, _
+                Password, _
+                WriteResPassword, _
+                OpenArgs.OriginValue)
+    End If
+
+    Set pOpenOriginalWorkbookWithOrigin = opened_workbook
+End Function
+
+Private Function pOpenOriginalWorkbookWithDelimiter( _
+        ByRef OpenArgs As TOpenOriginalWorkbookArgs, _
+        Optional ByVal UpdateLinks As Variant, _
+        Optional ByVal Format As Variant, _
+        Optional ByVal Password As Variant, _
+        Optional ByVal WriteResPassword As Variant, _
+        Optional ByVal Origin As Variant) As Workbook
+
+    Dim opened_workbook As Workbook
+
+    If IsEmpty(OpenArgs.DelimiterValue) Then
+        Set opened_workbook = pOpenOriginalWorkbookWithConverter( _
+                OpenArgs, _
+                UpdateLinks, _
+                Format, _
+                Password, _
+                WriteResPassword, _
+                Origin)
+    Else
+        Set opened_workbook = pOpenOriginalWorkbookWithConverter( _
+                OpenArgs, _
+                UpdateLinks, _
+                Format, _
+                Password, _
+                WriteResPassword, _
+                Origin, _
+                OpenArgs.DelimiterValue)
+    End If
+
+    Set pOpenOriginalWorkbookWithDelimiter = opened_workbook
+End Function
+
+Private Function pOpenOriginalWorkbookWithConverter( _
+        ByRef OpenArgs As TOpenOriginalWorkbookArgs, _
+        Optional ByVal UpdateLinks As Variant, _
+        Optional ByVal Format As Variant, _
+        Optional ByVal Password As Variant, _
+        Optional ByVal WriteResPassword As Variant, _
+        Optional ByVal Origin As Variant, _
+        Optional ByVal Delimiter As Variant) As Workbook
+
+    Dim opened_workbook As Workbook
+
+    If IsEmpty(OpenArgs.ConverterValue) Then
+        Set opened_workbook = pOpenOriginalWorkbookByOpen( _
+                OpenArgs, _
+                UpdateLinks, _
+                Format, _
+                Password, _
+                WriteResPassword, _
+                Origin, _
+                Delimiter)
+    Else
+        Set opened_workbook = pOpenOriginalWorkbookByOpen( _
+                OpenArgs, _
+                UpdateLinks, _
+                Format, _
+                Password, _
+                WriteResPassword, _
+                Origin, _
+                Delimiter, _
+                OpenArgs.ConverterValue)
+    End If
+
+    Set pOpenOriginalWorkbookWithConverter = opened_workbook
+End Function
+
+Private Function pOpenOriginalWorkbookByOpen( _
+        ByRef OpenArgs As TOpenOriginalWorkbookArgs, _
+        Optional ByVal UpdateLinks As Variant, _
+        Optional ByVal Format As Variant, _
+        Optional ByVal Password As Variant, _
+        Optional ByVal WriteResPassword As Variant, _
+        Optional ByVal Origin As Variant, _
+        Optional ByVal Delimiter As Variant, _
+        Optional ByVal Converter As Variant) As Workbook
+
+    Set pOpenOriginalWorkbookByOpen = Workbooks.Open( _
+            FileName:=OpenArgs.FilePath, _
+            UpdateLinks:=UpdateLinks, _
+            ReadOnly:=OpenArgs.ReadOnlyValue, _
+            Format:=Format, _
+            Password:=Password, _
+            WriteResPassword:=WriteResPassword, _
+            IgnoreReadOnlyRecommended:=OpenArgs.IgnoreReadOnlyRecommendedValue, _
+            Origin:=Origin, _
+            Delimiter:=Delimiter, _
+            Editable:=OpenArgs.EditableValue, _
+            Notify:=OpenArgs.NotifyValue, _
+            Converter:=Converter, _
+            AddToMru:=OpenArgs.AddToMruValue, _
+            Local:=OpenArgs.LocalSettingValue, _
+            CorruptLoad:=OpenArgs.CorruptLoadValue)
+End Function
 ' Saves a workbook.
 '
 ' @param Book Target book name.

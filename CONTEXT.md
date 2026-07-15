@@ -33,6 +33,10 @@ _Avoid_: common module, whole individual tool
 Git-managed `.bas` / `.cls` files.
 _Avoid_: unexported code inside `.xlsm`, Excel workbook
 
+**Original workbook file**:
+An existing Excel workbook file identified as the workbook file itself, not a VBA source file or a generated copy.
+_Avoid_: source file, template copy
+
 **Reflect**:
 The operation of writing a document source set into a generated workbook used for development or test execution.
 _Avoid_: extract, distribute, publish

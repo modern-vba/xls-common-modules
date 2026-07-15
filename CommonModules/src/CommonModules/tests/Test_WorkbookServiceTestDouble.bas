@@ -253,6 +253,188 @@ Public Sub Test_OpenWorkbook_Unregistered_RaisesError(ByVal Assert As UnitTestAs
     Assert.EqualsNumeric 0, wb_double.Store.GetCallCount("OpenWorkbook", "C:\Data\MyWorkbook.xlsx")
 End Sub
 
+Public Sub Test_OpenOriginalWorkbook_RegisteredValue_ReturnsAndRecordsAllArguments(ByVal Assert As UnitTestAssert)
+    On Error Resume Next
+
+    ' Arrange
+    Dim wb_double As WorkbookServiceTestDouble
+    Set wb_double = New WorkbookServiceTestDouble
+
+    Dim file_path As String
+    file_path = "C:\Data\OriginalWorkbook.xlsx"
+    Dim update_links As Variant
+    update_links = 3
+    Dim read_only As Variant
+    read_only = True
+    Dim format_value As Variant
+    format_value = 6
+    Dim password_value As Variant
+    password_value = "open-pass"
+    Dim write_res_password As Variant
+    write_res_password = "write-pass"
+    Dim ignore_read_only_recommended As Variant
+    ignore_read_only_recommended = True
+    Dim origin_value As Variant
+    origin_value = xlWindows
+    Dim delimiter_value As Variant
+    delimiter_value = ","
+    Dim editable_value As Variant
+    editable_value = True
+    Dim notify_value As Variant
+    notify_value = True
+    Dim converter_value As Variant
+    converter_value = 1
+    Dim add_to_mru_value As Variant
+    add_to_mru_value = True
+    Dim local_setting As Variant
+    local_setting = True
+    Dim corrupt_load_value As Variant
+    corrupt_load_value = xlRepairFile
+    Call wb_double.Store.SetReturn( _
+            "OpenOriginalWorkbook", _
+            "Book2.xlsx", _
+            file_path, _
+            update_links, _
+            read_only, _
+            format_value, _
+            password_value, _
+            write_res_password, _
+            ignore_read_only_recommended, _
+            origin_value, _
+            delimiter_value, _
+            editable_value, _
+            notify_value, _
+            converter_value, _
+            add_to_mru_value, _
+            local_setting, _
+            corrupt_load_value)
+
+    ' Act
+    Dim actual_name As String
+    actual_name = wb_double.OpenOriginalWorkbook( _
+            file_path, _
+            update_links, _
+            read_only, _
+            format_value, _
+            password_value, _
+            write_res_password, _
+            ignore_read_only_recommended, _
+            origin_value, _
+            delimiter_value, _
+            editable_value, _
+            notify_value, _
+            converter_value, _
+            add_to_mru_value, _
+            local_setting, _
+            corrupt_load_value)
+
+    Dim actual_error_number As Long
+    Dim actual_error_source As String
+    Dim actual_error_description As String
+    actual_error_number = Err.Number
+    actual_error_source = Err.Source
+    actual_error_description = Err.Description
+    On Error GoTo 0
+
+    ' Assert
+    If Not Assert.ErrorNotRaised(0, actual_error_number, actual_error_source, actual_error_description) Then Exit Sub
+    Assert.Equals "Book2.xlsx", actual_name
+
+    Dim stored_val As TestDoubleCallRecord
+    Set stored_val = wb_double.Store.GetLatestCall( _
+            "OpenOriginalWorkbook", _
+            file_path, _
+            update_links, _
+            read_only, _
+            format_value, _
+            password_value, _
+            write_res_password, _
+            ignore_read_only_recommended, _
+            origin_value, _
+            delimiter_value, _
+            editable_value, _
+            notify_value, _
+            converter_value, _
+            add_to_mru_value, _
+            local_setting, _
+            corrupt_load_value)
+    Assert.EqualsNumeric 15, stored_val.ArgumentCount
+    Assert.Equals file_path, stored_val.GetArgument(0)
+    Assert.EqualsNumeric update_links, stored_val.GetArgument(1)
+    Assert.Equals read_only, stored_val.GetArgument(2)
+    Assert.Equals corrupt_load_value, stored_val.GetArgument(14)
+End Sub
+
+Public Sub Test_OpenOriginalWorkbook_DefaultArguments_RecordDefaultsAndEmptyOmittedArguments(ByVal Assert As UnitTestAssert)
+    On Error Resume Next
+
+    ' Arrange
+    Dim wb_double As WorkbookServiceTestDouble
+    Set wb_double = New WorkbookServiceTestDouble
+
+    Dim file_path As String
+    file_path = "C:\Data\OriginalWorkbook.xlsx"
+    Call wb_double.Store.SetReturn( _
+            "OpenOriginalWorkbook", _
+            "Book2.xlsx", _
+            file_path, _
+            Empty, _
+            False, _
+            Empty, _
+            Empty, _
+            Empty, _
+            False, _
+            Empty, _
+            Empty, _
+            False, _
+            False, _
+            Empty, _
+            False, _
+            False, _
+            xlNormalLoad)
+
+    ' Act
+    Dim actual_name As String
+    actual_name = wb_double.OpenOriginalWorkbook(file_path)
+
+    Dim actual_error_number As Long
+    Dim actual_error_source As String
+    Dim actual_error_description As String
+    actual_error_number = Err.Number
+    actual_error_source = Err.Source
+    actual_error_description = Err.Description
+    On Error GoTo 0
+
+    ' Assert
+    If Not Assert.ErrorNotRaised(0, actual_error_number, actual_error_source, actual_error_description) Then Exit Sub
+    Assert.Equals "Book2.xlsx", actual_name
+
+    Dim stored_val As TestDoubleCallRecord
+    Set stored_val = wb_double.Store.GetLatestCall( _
+            "OpenOriginalWorkbook", _
+            file_path, _
+            Empty, _
+            False, _
+            Empty, _
+            Empty, _
+            Empty, _
+            False, _
+            Empty, _
+            Empty, _
+            False, _
+            False, _
+            Empty, _
+            False, _
+            False, _
+            xlNormalLoad)
+    Assert.EqualsNumeric 15, stored_val.ArgumentCount
+    Assert.Equals file_path, stored_val.GetArgument(0)
+    Assert.IsEmpty stored_val.GetArgument(1)
+    Assert.Equals False, stored_val.GetArgument(2)
+    Assert.IsEmpty stored_val.GetArgument(3)
+    Assert.Equals xlNormalLoad, stored_val.GetArgument(14)
+End Sub
+
 ' ----------------------------------------------------------------------------
 ' Tests for SaveWorkbook.
 ' ----------------------------------------------------------------------------

@@ -168,6 +168,121 @@ Private Function IWorkbookService_OpenWorkbook(Optional ByVal FilePath As String
     IWorkbookService_OpenWorkbook = OpenWorkbook(FilePath:=FilePath)
 End Function
 
+'* Strict stub for OpenOriginalWorkbook. Register the return value explicitly in Store.
+Public Function OpenOriginalWorkbook( _
+        ByVal FilePath As String, _
+        Optional ByVal UpdateLinks As Variant = Empty, _
+        Optional ByVal ReadOnly As Variant = False, _
+        Optional ByVal Format As Variant = Empty, _
+        Optional ByVal Password As Variant = Empty, _
+        Optional ByVal WriteResPassword As Variant = Empty, _
+        Optional ByVal IgnoreReadOnlyRecommended As Variant = False, _
+        Optional ByVal Origin As Variant = Empty, _
+        Optional ByVal Delimiter As Variant = Empty, _
+        Optional ByVal Editable As Variant = False, _
+        Optional ByVal Notify As Variant = False, _
+        Optional ByVal Converter As Variant = Empty, _
+        Optional ByVal AddToMru As Variant = False, _
+        Optional ByVal LocalSetting As Variant = False, _
+        Optional ByVal CorruptLoad As Variant = xlNormalLoad) As String
+
+    Dim key_args As Variant
+    key_args = pBuildOpenOriginalWorkbookArgs( _
+            FilePath:=FilePath, _
+            UpdateLinks:=UpdateLinks, _
+            ReadOnly:=ReadOnly, _
+            Format:=Format, _
+            Password:=Password, _
+            WriteResPassword:=WriteResPassword, _
+            IgnoreReadOnlyRecommended:=IgnoreReadOnlyRecommended, _
+            Origin:=Origin, _
+            Delimiter:=Delimiter, _
+            Editable:=Editable, _
+            Notify:=Notify, _
+            Converter:=Converter, _
+            AddToMru:=AddToMru, _
+            LocalSetting:=LocalSetting, _
+            CorruptLoad:=CorruptLoad)
+    Call Store.RaiseIfErrorFromArray("OpenOriginalWorkbook", key_args)
+
+    Dim result_value As String
+    result_value = Store.GetReturnFromArray("OpenOriginalWorkbook", key_args)
+    Call Store.RecordCallFromArray("OpenOriginalWorkbook", key_args)
+
+    OpenOriginalWorkbook = result_value
+End Function
+Private Function IWorkbookService_OpenOriginalWorkbook( _
+        ByVal FilePath As String, _
+        Optional ByVal UpdateLinks As Variant = Empty, _
+        Optional ByVal ReadOnly As Variant = False, _
+        Optional ByVal Format As Variant = Empty, _
+        Optional ByVal Password As Variant = Empty, _
+        Optional ByVal WriteResPassword As Variant = Empty, _
+        Optional ByVal IgnoreReadOnlyRecommended As Variant = False, _
+        Optional ByVal Origin As Variant = Empty, _
+        Optional ByVal Delimiter As Variant = Empty, _
+        Optional ByVal Editable As Variant = False, _
+        Optional ByVal Notify As Variant = False, _
+        Optional ByVal Converter As Variant = Empty, _
+        Optional ByVal AddToMru As Variant = False, _
+        Optional ByVal LocalSetting As Variant = False, _
+        Optional ByVal CorruptLoad As Variant = xlNormalLoad) As String
+
+    IWorkbookService_OpenOriginalWorkbook = OpenOriginalWorkbook( _
+            FilePath:=FilePath, _
+            UpdateLinks:=UpdateLinks, _
+            ReadOnly:=ReadOnly, _
+            Format:=Format, _
+            Password:=Password, _
+            WriteResPassword:=WriteResPassword, _
+            IgnoreReadOnlyRecommended:=IgnoreReadOnlyRecommended, _
+            Origin:=Origin, _
+            Delimiter:=Delimiter, _
+            Editable:=Editable, _
+            Notify:=Notify, _
+            Converter:=Converter, _
+            AddToMru:=AddToMru, _
+            LocalSetting:=LocalSetting, _
+            CorruptLoad:=CorruptLoad)
+End Function
+
+Private Function pBuildOpenOriginalWorkbookArgs( _
+        ByVal FilePath As String, _
+        Optional ByVal UpdateLinks As Variant = Empty, _
+        Optional ByVal ReadOnly As Variant = False, _
+        Optional ByVal Format As Variant = Empty, _
+        Optional ByVal Password As Variant = Empty, _
+        Optional ByVal WriteResPassword As Variant = Empty, _
+        Optional ByVal IgnoreReadOnlyRecommended As Variant = False, _
+        Optional ByVal Origin As Variant = Empty, _
+        Optional ByVal Delimiter As Variant = Empty, _
+        Optional ByVal Editable As Variant = False, _
+        Optional ByVal Notify As Variant = False, _
+        Optional ByVal Converter As Variant = Empty, _
+        Optional ByVal AddToMru As Variant = False, _
+        Optional ByVal LocalSetting As Variant = False, _
+        Optional ByVal CorruptLoad As Variant = xlNormalLoad) As Variant
+
+    Dim args_arr(0 To 14) As Variant
+    args_arr(0) = FilePath
+    If IsMissing(UpdateLinks) Then args_arr(1) = Empty Else args_arr(1) = UpdateLinks
+    args_arr(2) = ReadOnly
+    If IsMissing(Format) Then args_arr(3) = Empty Else args_arr(3) = Format
+    If IsMissing(Password) Then args_arr(4) = Empty Else args_arr(4) = Password
+    If IsMissing(WriteResPassword) Then args_arr(5) = Empty Else args_arr(5) = WriteResPassword
+    args_arr(6) = IgnoreReadOnlyRecommended
+    If IsMissing(Origin) Then args_arr(7) = Empty Else args_arr(7) = Origin
+    If IsMissing(Delimiter) Then args_arr(8) = Empty Else args_arr(8) = Delimiter
+    args_arr(9) = Editable
+    args_arr(10) = Notify
+    If IsMissing(Converter) Then args_arr(11) = Empty Else args_arr(11) = Converter
+    args_arr(12) = AddToMru
+    args_arr(13) = LocalSetting
+    args_arr(14) = CorruptLoad
+
+    pBuildOpenOriginalWorkbookArgs = args_arr
+End Function
+
 '* Strict stub for SaveWorkbook. Register the return value explicitly in Store.
 Public Function SaveWorkbook(ByVal Book As String, ByVal FilePath As String, Optional ByVal Force As Boolean = True) As String
     Call Store.RaiseIfError("SaveWorkbook", Book, FilePath, Force)

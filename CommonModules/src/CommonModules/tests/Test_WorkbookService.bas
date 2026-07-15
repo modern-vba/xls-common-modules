@@ -198,6 +198,112 @@ Public Sub Test_GetOtherWorkbooks_ExcludesThisWorkbookAndIncludesAddedWorkbook(B
     Assert.IsTrue ContainsInArray(target_book_name, actual_value)
     Assert.IsFalse ContainsInArray(ThisWorkbook.Name, actual_value)
 End Sub
+
+' -----------------------------------------------------------------------------
+' OpenOriginalWorkbook
+' -----------------------------------------------------------------------------
+
+Public Sub Test_OpenOriginalWorkbook_SavedWorkbook_OpensHiddenAndRestoresActiveWorkbook(ByVal Assert As UnitTestAssert)
+    On Error Resume Next
+
+    ' Arrange
+    Call InitializeCommonService
+    Call InitializeFileSystemService
+
+    Dim book_srv As IWorkbookService
+    Set book_srv = New WorkbookService
+
+    Dim file_path As String
+    file_path = JoinPath(WbSrv.GetThisWorkbookDirectoryPath(), "tmp_workbook_service_open_original.xlsx")
+    If FsSrv.IsFile(file_path) Then Call FsSrv.RemoveFile(file_path, Force:=True)
+
+    Dim source_book As Workbook
+    Set source_book = Workbooks.Add
+    source_book.Worksheets(1).Range("A1").Value = "original"
+    Call source_book.SaveAs(Filename:=file_path, FileFormat:=GetExcelFileFormat(file_path))
+    Call source_book.Close(SaveChanges:=False)
+
+    Call ThisWorkbook.Activate
+    Dim expected_active_book_name As String
+    expected_active_book_name = ActiveWorkbook.Name
+
+    ' Act
+    Err.Clear
+    Dim book_name As String
+    book_name = book_srv.OpenOriginalWorkbook(file_path)
+
+    Dim actual_error_number As Long
+    Dim actual_error_source As String
+    Dim actual_error_description As String
+    actual_error_number = Err.Number
+    actual_error_source = Err.Source
+    actual_error_description = Err.Description
+
+    Dim actual_visible As Boolean
+    Dim actual_active_book_name As String
+    Dim actual_full_name As String
+    If actual_error_number = 0 Then
+        actual_visible = Workbooks(book_name).Windows(1).Visible
+        actual_active_book_name = ActiveWorkbook.Name
+        actual_full_name = Workbooks(book_name).FullName
+    End If
+
+    ' Cleanup
+    If book_name <> "" Then Call book_srv.CloseWorkbook(book_name, Force:=True)
+    If FsSrv.IsFile(file_path) Then Call FsSrv.RemoveFile(file_path, Force:=True)
+    On Error GoTo 0
+
+    ' Assert
+    If Not Assert.ErrorNotRaised(0, actual_error_number, actual_error_source, actual_error_description) Then Exit Sub
+    Assert.Equals file_path, actual_full_name
+    Assert.IsFalse actual_visible
+    Assert.Equals expected_active_book_name, actual_active_book_name
+End Sub
+
+Public Sub Test_OpenOriginalWorkbook_ReadOnlyTrue_OpensReadOnly(ByVal Assert As UnitTestAssert)
+    On Error Resume Next
+
+    ' Arrange
+    Call InitializeCommonService
+    Call InitializeFileSystemService
+
+    Dim book_srv As IWorkbookService
+    Set book_srv = New WorkbookService
+
+    Dim file_path As String
+    file_path = JoinPath(WbSrv.GetThisWorkbookDirectoryPath(), "tmp_workbook_service_open_original_readonly.xlsx")
+    If FsSrv.IsFile(file_path) Then Call FsSrv.RemoveFile(file_path, Force:=True)
+
+    Dim source_book As Workbook
+    Set source_book = Workbooks.Add
+    source_book.Worksheets(1).Range("A1").Value = "read only probe"
+    Call source_book.SaveAs(Filename:=file_path, FileFormat:=GetExcelFileFormat(file_path))
+    Call source_book.Close(SaveChanges:=False)
+
+    ' Act
+    Err.Clear
+    Dim book_name As String
+    book_name = book_srv.OpenOriginalWorkbook(file_path, ReadOnly:=True)
+
+    Dim actual_error_number As Long
+    Dim actual_error_source As String
+    Dim actual_error_description As String
+    actual_error_number = Err.Number
+    actual_error_source = Err.Source
+    actual_error_description = Err.Description
+
+    Dim actual_read_only As Boolean
+    If actual_error_number = 0 Then actual_read_only = Workbooks(book_name).ReadOnly
+
+    ' Cleanup
+    If book_name <> "" Then Call book_srv.CloseWorkbook(book_name, Force:=True)
+    If FsSrv.IsFile(file_path) Then Call FsSrv.RemoveFile(file_path, Force:=True)
+    On Error GoTo 0
+
+    ' Assert
+    If Not Assert.ErrorNotRaised(0, actual_error_number, actual_error_source, actual_error_description) Then Exit Sub
+    Assert.IsTrue actual_read_only
+End Sub
 ' -----------------------------------------------------------------------------
 ' WorksheetExists
 ' -----------------------------------------------------------------------------
