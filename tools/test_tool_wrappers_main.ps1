@@ -138,6 +138,43 @@ function New-TestProject {
     }
 }
 
+function New-TestVbaProject {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Root,
+        [Parameter(Mandatory = $true)]
+        [string]$ProjectName,
+        [Parameter(Mandatory = $true)]
+        [string]$DocumentName
+    )
+
+    $source_dir = Join-Path (Join-Path $Root 'src') $DocumentName
+    New-Item -ItemType Directory -Path $source_dir -Force | Out-Null
+    $manifest = [ordered]@{
+        schemaVersion = 1
+        projectName = $ProjectName
+        primaryDocument = $DocumentName
+        documents = [ordered]@{
+            $DocumentName = [ordered]@{
+                kind = 'excel'
+                sourcePath = "src/$DocumentName"
+                templatePath = "src/$DocumentName/$DocumentName.xlsm"
+                binPath = "bin/$DocumentName.xlsm"
+                publishPath = "publish/$DocumentName.xlsm"
+                commonModules = @()
+                references = @()
+            }
+        }
+        commonModulesRepository = '../common_modules_repo'
+    }
+    Write-TestFileUtf8 -Path (Join-Path $Root 'vba-project.json') -Content ($manifest | ConvertTo-Json -Depth 8)
+
+    return [pscustomobject]@{
+        Root = $Root
+        SourceSetPath = $source_dir
+    }
+}
+
 function New-TestVbaDevToolLayout {
     param(
         [Parameter(Mandatory = $true)]
@@ -302,10 +339,95 @@ try {
     Test-Equal -Expected 1 -Actual $calls.Count -Message 'SYNC_MODS should import only changed target workbooks.'
     Test-True -Condition ($calls[0] -like "import --from *SyncBookB --to *SyncBookB.xlsm") -Message "SYNC_MODS called unexpected vba-dev arguments: $($calls[0])"
 
-    $collect_root = Join-Path $temp_root 'collect-target'
-    New-Item -ItemType Directory -Path $collect_root -Force | Out-Null
-    & (Join-Path $tools_root 'collect_common_mods_main.ps1') '' '' '' '' '' $collect_root
-    Test-True -Condition (Test-Path -LiteralPath (Join-Path (Join-Path $collect_root 'common_modules_repo') 'common-modules-manifest.tsv') -PathType Leaf) -Message 'COLLECT_COMMON_MODS did not copy the manifest.'
+    $collect_fixture_root = Join-Path $temp_root 'collect-fixture'
+    $collect_workspace_root = Join-Path $collect_fixture_root 'workspace'
+    $collect_repository_root = Join-Path $collect_workspace_root 'xls-common-modules'
+    $collect_tools_root = Join-Path $collect_repository_root 'tools'
+    New-Item -ItemType Directory -Path $collect_tools_root -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $tools_root 'VbaDevTool.psm1') -Destination $collect_tools_root -Force
+    Copy-Item -LiteralPath (Join-Path $tools_root 'collect_common_mods_main.ps1') -Destination $collect_tools_root -Force
+
+    $collect_canonical = New-TestVbaProject -Root (Join-Path $collect_repository_root 'CommonModules') -ProjectName 'CommonModules' -DocumentName 'CommonModules'
+    $collect_old = New-TestVbaProject -Root (Join-Path $collect_workspace_root 'ProjectOld') -ProjectName 'ProjectOld' -DocumentName 'OldBook'
+    $collect_new = New-TestVbaProject -Root (Join-Path $collect_workspace_root 'Nested\ProjectNew') -ProjectName 'ProjectNew' -DocumentName 'NewBook'
+    $collect_manifest_path = Join-Path $collect_canonical.SourceSetPath 'common-modules-manifest.tsv'
+    Write-TestFileSjis -Path $collect_manifest_path -Content "ModuleFile`tCategories`tDependencies`r`nShared.bas`truntime-baseline`t`r`n"
+    $canonical_module = Join-Path $collect_canonical.SourceSetPath 'Shared.bas'
+    $old_module = Join-Path (Join-Path $collect_old.SourceSetPath 'common-modules') 'Shared.bas'
+    $new_module = Join-Path (Join-Path $collect_new.SourceSetPath 'common-modules') 'Shared.bas'
+    Write-TestFileSjis -Path $canonical_module -Content "Attribute VB_Name = `"Shared`"`r`n'canonical`r`n"
+    Write-TestFileSjis -Path $old_module -Content "Attribute VB_Name = `"Shared`"`r`n'old`r`n"
+    Write-TestFileSjis -Path $new_module -Content "Attribute VB_Name = `"Shared`"`r`n'new`r`n"
+    Write-TestFileSjis -Path (Join-Path $collect_new.SourceSetPath 'Unlisted.bas') -Content "Attribute VB_Name = `"Unlisted`"`r`n"
+    [System.IO.File]::SetLastWriteTimeUtc($canonical_module, [datetime]'2025-01-01T00:00:00Z')
+    [System.IO.File]::SetLastWriteTimeUtc($old_module, [datetime]'2025-01-02T00:00:00Z')
+    [System.IO.File]::SetLastWriteTimeUtc($new_module, [datetime]'2025-01-03T00:00:00Z')
+
+    $collect_output_root = Join-Path $collect_fixture_root 'output'
+    New-Item -ItemType Directory -Path $collect_output_root -Force | Out-Null
+    $collect_script = Join-Path $collect_tools_root 'collect_common_mods_main.ps1'
+    & $collect_script '' '' '' '' '' $collect_output_root
+    $collected_repository = Join-Path $collect_output_root 'common_modules_repo'
+    $collected_module = Join-Path $collected_repository 'Shared.bas'
+    Test-Equal -Expected (Get-Content -LiteralPath $new_module -Raw) -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS did not select the newest project source.'
+    Test-True -Condition (Test-Path -LiteralPath (Join-Path $collected_repository 'common-modules-manifest.tsv') -PathType Leaf) -Message 'COLLECT_COMMON_MODS did not copy the manifest.'
+    Test-True -Condition (-not (Test-Path -LiteralPath (Join-Path $collected_repository 'Unlisted.bas'))) -Message 'COLLECT_COMMON_MODS copied a source file that was not listed in the manifest.'
+
+    $conflicting_tie_time = [datetime]'2025-01-04T00:00:00Z'
+    [System.IO.File]::SetLastWriteTimeUtc($old_module, $conflicting_tie_time)
+    [System.IO.File]::SetLastWriteTimeUtc($new_module, $conflicting_tie_time)
+    Invoke-ExpectedFailure -ExpectedMessage 'same timestamp but different content' -Script {
+        & $collect_script '' '' '' '' '' $collect_output_root
+    }
+    Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'new`r`n" -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS changed output before resolving a conflicting newest-source tie.'
+
+    $dist_fixture_root = Join-Path $temp_root 'dist-fixture'
+    $dist_workspace_root = Join-Path $dist_fixture_root 'workspace'
+    $dist_repository_root = Join-Path $dist_workspace_root 'xls-common-modules'
+    $dist_tools_root = Join-Path $dist_repository_root 'tools'
+    $dist_source = Join-Path $dist_repository_root 'common_modules_repo'
+    $dist_target_a = Join-Path $dist_workspace_root 'ProjectA\common_modules_repo'
+    $dist_target_b = Join-Path $dist_workspace_root 'ProjectB\common_modules_repo'
+    $dist_non_target = Join-Path $dist_workspace_root 'ProjectWithoutRepository'
+    New-Item -ItemType Directory -Path $dist_tools_root, $dist_source, $dist_target_a, $dist_target_b -Force | Out-Null
+    New-Item -ItemType Directory -Path $dist_non_target -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $tools_root 'VbaDevTool.psm1') -Destination $dist_tools_root -Force
+    Copy-Item -LiteralPath (Join-Path $tools_root 'dist_common_mods_repo_main.ps1') -Destination $dist_tools_root -Force
+    Write-TestFileSjis -Path (Join-Path $dist_source 'Shared.bas') -Content "Attribute VB_Name = `"Shared`"`r`n'distributed`r`n"
+    Write-TestFileSjis -Path (Join-Path $dist_source 'common-modules-manifest.tsv') -Content "ModuleFile`tCategories`tDependencies`r`nShared.bas`truntime-baseline`t`r`n"
+    Write-TestFileSjis -Path (Join-Path $dist_target_a 'Stale.bas') -Content "Attribute VB_Name = `"Stale`"`r`n"
+    Copy-Item -LiteralPath (Join-Path $dist_source 'Shared.bas') -Destination $dist_target_b -Force
+    Copy-Item -LiteralPath (Join-Path $dist_source 'common-modules-manifest.tsv') -Destination $dist_target_b -Force
+    [System.IO.File]::SetLastWriteTimeUtc((Join-Path $dist_target_b 'Shared.bas'), [datetime]'2020-01-01T00:00:00Z')
+    $unchanged_target_time = [System.IO.File]::GetLastWriteTimeUtc((Join-Path $dist_target_b 'Shared.bas'))
+
+    & (Join-Path $dist_tools_root 'dist_common_mods_repo_main.ps1') '' '' '' '' '' $dist_source
+    foreach ($dist_target in @($dist_target_a, $dist_target_b)) {
+        Test-Equal -Expected (Get-Content -LiteralPath (Join-Path $dist_source 'Shared.bas') -Raw) -Actual (Get-Content -LiteralPath (Join-Path $dist_target 'Shared.bas') -Raw) -Message "DIST_COMMON_MODS_REPO did not copy Shared.bas to '$dist_target'."
+        Test-True -Condition (Test-Path -LiteralPath (Join-Path $dist_target 'common-modules-manifest.tsv') -PathType Leaf) -Message "DIST_COMMON_MODS_REPO did not copy the manifest to '$dist_target'."
+        Test-True -Condition (-not (Test-Path -LiteralPath (Join-Path $dist_target 'Stale.bas'))) -Message "DIST_COMMON_MODS_REPO did not replace stale contents in '$dist_target'."
+    }
+    Test-Equal -Expected $unchanged_target_time -Actual ([System.IO.File]::GetLastWriteTimeUtc((Join-Path $dist_target_b 'Shared.bas'))) -Message 'DIST_COMMON_MODS_REPO rewrote an unchanged target file.'
+    Test-True -Condition (-not (Test-Path -LiteralPath (Join-Path $dist_non_target 'common_modules_repo'))) -Message 'DIST_COMMON_MODS_REPO created a target for a project that had not opted in.'
+    Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'distributed`r`n" -Actual (Get-Content -LiteralPath (Join-Path $dist_source 'Shared.bas') -Raw) -Message 'DIST_COMMON_MODS_REPO modified its source repository.'
+
+    $dist_no_target_root = Join-Path $temp_root 'dist-no-target\workspace\xls-common-modules'
+    $dist_no_target_tools = Join-Path $dist_no_target_root 'tools'
+    $dist_no_target_source = Join-Path $dist_no_target_root 'common_modules_repo'
+    New-Item -ItemType Directory -Path $dist_no_target_tools, $dist_no_target_source -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $tools_root 'VbaDevTool.psm1') -Destination $dist_no_target_tools -Force
+    Copy-Item -LiteralPath (Join-Path $tools_root 'dist_common_mods_repo_main.ps1') -Destination $dist_no_target_tools -Force
+    Write-TestFileSjis -Path (Join-Path $dist_no_target_source 'Shared.bas') -Content "Attribute VB_Name = `"Shared`"`r`n"
+    Invoke-ExpectedFailure -ExpectedMessage 'Target common_modules_repo was not found' -Script {
+        & (Join-Path $dist_no_target_tools 'dist_common_mods_repo_main.ps1') '' '' '' '' '' $dist_no_target_source
+    }
+
+    $dist_wrong_source = Join-Path $dist_fixture_root 'not-a-common-modules-repository'
+    New-Item -ItemType Directory -Path $dist_wrong_source -Force | Out-Null
+    Write-TestFileSjis -Path (Join-Path $dist_wrong_source 'Shared.bas') -Content "Attribute VB_Name = `"Shared`"`r`n"
+    Invoke-ExpectedFailure -ExpectedMessage "Source directory must be named 'common_modules_repo'" -Script {
+        & (Join-Path $dist_tools_root 'dist_common_mods_repo_main.ps1') '' '' '' '' '' $dist_wrong_source
+    }
 
     $fake_doxygen_script = Join-Path $temp_root 'fake-doxygen.ps1'
     Write-TestFileUtf8 -Path $fake_doxygen_script -Content @"

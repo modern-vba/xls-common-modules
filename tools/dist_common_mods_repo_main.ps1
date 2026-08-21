@@ -4,6 +4,8 @@ $InformationPreference = 'Continue'
 $current_dir = (Get-Location).ProviderPath
 Set-Location $PSScriptRoot
 
+Import-Module (Join-Path $PSScriptRoot 'VbaDevTool.psm1') -Force
+
 $bat_dir = $args[0]
 $bat_file = $args[1]
 $bat_path = $args[2]
@@ -67,12 +69,20 @@ function Test-SamePath {
 }
 
 function Get-SourceDirectory {
+    # Keep DIST as a direct PowerShell mirror of one common_modules_repo.
     if ([string]::IsNullOrWhiteSpace($arg_path)) {
         $source_path = Join-Path $current_dir $COMMON_MODULES_REPO_DIR_NAME
-        return Get-DirectoryInfo -Path $source_path -Description 'source common_modules_repo'
+        $source_directory = Get-DirectoryInfo -Path $source_path -Description 'source common_modules_repo'
+    }
+    else {
+        $source_directory = Get-DirectoryInfo -Path $arg_path -Description 'source directory'
     }
 
-    return Get-DirectoryInfo -Path $arg_path -Description 'source directory'
+    if (-not [string]::Equals($source_directory.Name, $COMMON_MODULES_REPO_DIR_NAME, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Source directory must be named '$COMMON_MODULES_REPO_DIR_NAME': $($source_directory.FullName)"
+    }
+
+    return $source_directory
 }
 
 function Get-ParentDirectoryInfo {
@@ -197,6 +207,40 @@ function Copy-DirectoryContents {
     }
 }
 
+function Test-DirectoryContentsEqual {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.DirectoryInfo]$SourceDirectory,
+
+        [Parameter(Mandatory = $true)]
+        [System.IO.DirectoryInfo]$DestinationDirectory
+    )
+
+    $source_items = @(Get-ChildItem -LiteralPath $SourceDirectory.FullName -Force)
+    $destination_items = @(Get-ChildItem -LiteralPath $DestinationDirectory.FullName -Force)
+    if ($source_items.Count -ne $destination_items.Count) {
+        return $false
+    }
+
+    foreach ($source_item in $source_items) {
+        if ($source_item.PSIsContainer) {
+            return $false
+        }
+
+        $destination_match = @($destination_items | Where-Object {
+            [string]::Equals($_.Name, $source_item.Name, [System.StringComparison]::Ordinal)
+        })
+        if ($destination_match.Count -ne 1 -or $destination_match[0].PSIsContainer) {
+            return $false
+        }
+        if (-not (Test-FileContentEqual -LeftPath $source_item.FullName -RightPath $destination_match[0].FullName)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 try {
     $source_directory = Get-SourceDirectory
     Assert-SourceDirectoryNotEmpty -SourceDirectory $source_directory
@@ -207,6 +251,11 @@ try {
     Write-Host "Distribution target search root: $($search_root.FullName)"
 
     foreach ($target_common_modules_repo in $target_common_modules_repos) {
+        if (Test-DirectoryContentsEqual -SourceDirectory $source_directory -DestinationDirectory $target_common_modules_repo) {
+            Write-Host "Unchanged distribution target: $($target_common_modules_repo.FullName)"
+            continue
+        }
+
         Write-Host "Updating distribution target: $($target_common_modules_repo.FullName)"
         Clear-DirectoryContents -Directory $target_common_modules_repo
         Copy-DirectoryContents -SourceDirectory $source_directory -DestinationDirectory $target_common_modules_repo

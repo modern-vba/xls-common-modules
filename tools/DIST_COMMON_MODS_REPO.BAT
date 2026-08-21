@@ -27,8 +27,10 @@ SET PS1FILE=%BAT_DIR%\dist_common_mods_repo_main.ps1
 
 ECHO Running the operation.
 ECHO --------------------------------------------------------------------------
-powershell -ExecutionPolicy bypass -NoLogo -NonInteractive -File "%PS1FILE%" "%BAT_DIR%" "%BAT_FILE%" "%BAT_PATH%" "%ARG_DIR%" "%ARG_FILE%" "%ARG_PATH%"
+powershell -NoProfile -ExecutionPolicy bypass -NoLogo -NonInteractive -File "%PS1FILE%" "%BAT_DIR%" "%BAT_FILE%" "%BAT_PATH%" "%ARG_DIR%" "%ARG_FILE%" "%ARG_PATH%"
+SET SCRIPT_EXIT_CODE=%ERRORLEVEL%
 ECHO --------------------------------------------------------------------------
 ECHO The operation completed.
 ECHO This window will close automatically in 1 minute. The operation has already finished, so you may close the window or press CTRL+C.
 TIMEOUT /T 60 /NOBREAK
+EXIT /B %SCRIPT_EXIT_CODE%

@@ -2,7 +2,7 @@
 
 `xls-common-modules` is a development repository for `CommonModules`, which are shared by multiple Excel VBA tools, and for supporting workbook import, extraction, distribution, formatting, and documentation generation.
 
-The source of truth for common modules is `CommonModules/src/CommonModules`. Common modules under an individual tool's `common_modules_repo`, document source set, or workbook-local source set are treated as distributed copies.
+`CommonModules/src/CommonModules/common-modules-manifest.tsv` is the source of truth for which common modules are collected. For each listed module, COLLECT selects the newest file from the document source sets declared by `vba-project.json` files across the workspace. A `common_modules_repo` remains generated output and is never a collection source.
 
 ## Features
 
@@ -10,7 +10,7 @@ This repository lets Excel VBA macros be treated as development assets that can 
 
 One way to share common processing is to place it in an `.xlsb` or add-in. However, when deliverables depend on external workbooks or add-in references, they are no longer self-contained single files and become less portable. Another approach is to manually copy common processing into each `.xlsm`; that keeps each `.xlsm` easy to distribute, but makes updates across multiple workbooks easy to miss.
 
-`xls-common-modules` centrally manages common modules as VBA source in `CommonModules/src/CommonModules`, collects manifest-listed files into `common_modules_repo`, and updates vba-dev projects through `UPDATE_COMMON_MODS`. Distribution keeps the portability of a single `.xlsm`, while development can keep common modules current across multiple individual tools.
+`xls-common-modules` centrally manages the CommonModules manifest, collects the newest manifest-listed sources from workspace vba-dev projects into `common_modules_repo`, and updates projects through `UPDATE_COMMON_MODS`. Distribution keeps the portability of a single `.xlsm`, while development can keep common modules current across multiple individual tools.
 
 Excel macros have very few widely established unit-test frameworks. `xls-common-modules` provides a lightweight test runner, assertions, and a test double foundation that run inside Excel workbooks. The normal automated path is `vba-dev test`, which builds the selected document and runs `UnitTestMain` inside the generated workbook.
 
@@ -61,7 +61,7 @@ Call WsSrv.WriteCell(target_cell, "value", TypeConvert:=False)
 
 `CommonModules/` is a workbook-backed `vba-dev` project root. Its document source set is `CommonModules/src/CommonModules`, the template workbook is `CommonModules/src/CommonModules/CommonModules.xlsm`, and generated workbooks are written under `CommonModules/bin/CommonModules` and `CommonModules/publish/CommonModules`.
 
-`CommonModules/project.json` keeps the `vba-dev new excel` default CommonModules repository relationship for this repository layout: `commonModulesRepository` is `../common_modules_repo`. All manifest-listed CommonModules entries are installed as requested modules, equivalent to adding every common module to the project.
+`CommonModules/vba-project.json` keeps the `vba-dev new excel` default CommonModules repository relationship for this repository layout: `commonModulesRepository` is `../common_modules_repo`. All manifest-listed CommonModules entries are installed as requested modules, equivalent to adding every common module to the project.
 
 ```powershell
 vba-dev doctor --project .\CommonModules
@@ -72,7 +72,7 @@ vba-dev publish --project .\CommonModules
 
 ## Development Workflow
 
-For vba-dev projects, individual tool developers edit the document source set declared by `project.json` `sourcePath`, build the workbook, and test it. Workbook-local workflows remain available for explicit workbook import/extract through a `modules` folder next to the target workbook.
+For vba-dev projects, individual tool developers edit the document source set declared by `vba-project.json` `sourcePath`, build the workbook, and test it. Workbook-local workflows remain available for explicit workbook import/extract through a `modules` folder next to the target workbook.
 
 This section uses `xls-web-tools/SampleWebTool` as an example.
 
@@ -127,8 +127,10 @@ Use the `.bat` files or the `.lnk` files placed in individual tool folders when 
 | Extract VBA source from `SampleWebTool.xlsm` into workbook-local source set | `tools/EXP_MODS.BAT` | `xls-web-tools/SampleWebTool/SampleWebTool.xlsm` |
 | Generate the API reference for a source set | `tools/GEN_DOC.BAT` | `xls-web-tools/SampleWebTool/src/SampleWebTool` |
 | Update CommonModules and build all vba-dev documents under a folder | `tools/UPDATE_COMMON_MODS.BAT` | `xls-web-tools` |
-| Collect manifest-listed common modules into `common_modules_repo` | `tools/COLLECT_COMMON_MODS.BAT` | `xls-common-modules` |
+| Collect the newest manifest-listed module from all workspace `vba-project.json` source sets into `common_modules_repo` | `tools/COLLECT_COMMON_MODS.BAT` | `xls-common-modules` |
 | Distribute to each individual tool repository's `common_modules_repo` | `tools/DIST_COMMON_MODS_REPO.BAT` | `xls-common-modules/common_modules_repo` |
+
+`DIST_COMMON_MODS_REPO` is intentionally a small PowerShell copy workflow. It uses the supplied `common_modules_repo` as its source, finds existing `common_modules_repo` directories directly under the workspace's immediate project directories, excludes the source itself, leaves byte-identical flat targets unchanged, and replaces every other target's contents in order. It does not create opt-in targets, infer them from project manifests, or provide a transaction or rollback layer; if a later copy fails, inspect the reported target and rerun the command after correcting the problem.
 
 `GEN_DOC.BAT` treats the dropped path as a source directory and reads only direct `.bas`, `.cls`, and `.frm` files. For `<owner>/src/<target>`, it writes HTML to `<owner>/docs/<target>/api-reference` and creates `<owner>/docs/<target>/api-reference.zip`; the Doxygen project name is `<target>`. For `<owner>/modules`, `<owner>/<name>`, or `<owner>/src`, it writes to `<owner>/docs/api-reference` and creates `<owner>/docs/api-reference.zip`; `<owner>/src` emits a warning because `src` is normally a container directory.
 
