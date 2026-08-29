@@ -294,46 +294,216 @@ function Get-DocumentationOwnerContext {
     }
 }
 
+function Test-OrdinalStringInSet {
+    param(
+        [AllowEmptyString()]
+        [string]$Value,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$AllowedValues
+    )
+
+    foreach ($allowed_value in $AllowedValues) {
+        if ([string]::Equals($Value, $allowed_value, [System.StringComparison]::Ordinal)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Read-CommonModulesManifest {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ManifestPath
+    )
+
+    $resolved_path = (Resolve-Path -LiteralPath $ManifestPath -ErrorAction Stop).ProviderPath
+    $bytes = [System.IO.File]::ReadAllBytes($resolved_path)
+    if ($bytes.Length -lt 2 -or $bytes[0] -ne 0xFF -or $bytes[1] -ne 0xFE) {
+        throw "CommonModules manifest must use UTF-16LE with a BOM: $resolved_path"
+    }
+    if ((($bytes.Length - 2) % 2) -ne 0) {
+        throw "CommonModules manifest contains an invalid UTF-16LE byte count: $resolved_path"
+    }
+
+    $encoding = New-Object System.Text.UnicodeEncoding($false, $true, $true)
+    try {
+        $text = $encoding.GetString($bytes, 2, $bytes.Length - 2)
+    }
+    catch [System.Text.DecoderFallbackException] {
+        throw "CommonModules manifest contains invalid UTF-16LE text: $resolved_path"
+    }
+
+    if (-not $text.EndsWith("`r`n", [System.StringComparison]::Ordinal)) {
+        throw "CommonModules manifest must end with exactly one CRLF: $resolved_path"
+    }
+    if ([regex]::IsMatch($text, "(?<!`r)`n|`r(?!`n)")) {
+        throw "CommonModules manifest must use CRLF line endings throughout: $resolved_path"
+    }
+
+    $body = $text.Substring(0, $text.Length - 2)
+    if ($body.EndsWith("`r`n", [System.StringComparison]::Ordinal)) {
+        throw "CommonModules manifest must end with exactly one CRLF: $resolved_path"
+    }
+    $lines = @($body -split "`r`n")
+
+    $line_index = 0
+    while ($line_index -lt $lines.Count -and $lines[$line_index].StartsWith('#', [System.StringComparison]::Ordinal)) {
+        $comment = $lines[$line_index]
+        if ([regex]::IsMatch($comment, '\p{Cc}') -or [char]::IsWhiteSpace($comment[$comment.Length - 1])) {
+            throw "CommonModules manifest line $($line_index + 1) contains an invalid comment."
+        }
+        $line_index++
+    }
+
+    $expected_header = "ModuleFile`tCategories`tDependencies`tRequiredReferences"
+    if ($line_index -ge $lines.Count -or -not [string]::Equals($lines[$line_index], $expected_header, [System.StringComparison]::Ordinal)) {
+        throw "CommonModules manifest has an invalid header: $resolved_path"
+    }
+    $line_index++
+    if ($line_index -ge $lines.Count) {
+        throw "CommonModules manifest contains no module rows: $resolved_path"
+    }
+
+    $records = New-Object 'System.Collections.Generic.List[object]'
+    $records_by_module = New-Object 'System.Collections.Generic.Dictionary[string, object]' ([System.StringComparer]::OrdinalIgnoreCase)
+    while ($line_index -lt $lines.Count) {
+        $line = $lines[$line_index]
+        $line_number = $line_index + 1
+        if ([string]::Equals($line, $expected_header, [System.StringComparison]::Ordinal)) {
+            throw "CommonModules manifest line $line_number contains a duplicate header."
+        }
+        $columns = $line.Split("`t")
+        if ($columns.Count -ne 4) {
+            throw "CommonModules manifest line $line_number must contain exactly 4 tab-separated columns."
+        }
+
+        $module_file = $columns[0]
+        if ([string]::IsNullOrWhiteSpace($module_file)) {
+            throw "CommonModules manifest line $line_number has an empty ModuleFile value."
+        }
+        if ([regex]::IsMatch($module_file, '\p{Cc}') -or $module_file.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or -not [string]::Equals($module_file, $module_file.Trim(), [System.StringComparison]::Ordinal) -or [System.IO.Path]::IsPathRooted($module_file) -or $module_file.Contains('\') -or $module_file.Contains('/') -or $module_file.Contains(',')) {
+            throw "CommonModules manifest line $line_number has an invalid ModuleFile value '$module_file'."
+        }
+        $module_extension = [System.IO.Path]::GetExtension($module_file)
+        if (-not (Test-OrdinalStringInSet -Value $module_extension -AllowedValues @('.bas', '.cls', '.frm'))) {
+            throw "CommonModules manifest line $line_number has an invalid ModuleFile value '$module_file'."
+        }
+        $module_name = [System.IO.Path]::GetFileNameWithoutExtension($module_file)
+        if ([string]::IsNullOrEmpty($module_name) -or -not [string]::Equals($module_name, $module_name.Trim(), [System.StringComparison]::Ordinal) -or $module_name.Contains('.')) {
+            throw "CommonModules manifest line $line_number has an invalid ModuleFile value '$module_file'."
+        }
+        if ($records_by_module.ContainsKey($module_file)) {
+            throw "CommonModules manifest line $line_number duplicates ModuleFile '$module_file'."
+        }
+        $categories = $columns[1]
+        if (-not (Test-OrdinalStringInSet -Value $categories -AllowedValues @(
+                'runtime-baseline',
+                'runtime-baseline,public-udf',
+                'test-foundation',
+                'optional',
+                'optional,public-udf',
+                'test-double'
+            ))) {
+            throw "CommonModules manifest line $line_number has invalid Categories '$categories' for '$module_file'."
+        }
+
+        $required_references_text = $columns[3]
+        $json_string_pattern = '"(?:[^\x00-\x1F"\\]|\\(?:["\\/bfnrt]|u[0-9A-Fa-f]{4}))*"'
+        $json_array_pattern = "^\x20*\[\x20*(?:$json_string_pattern(?:\x20*,\x20*$json_string_pattern)*)?\x20*\]\x20*$"
+        if (-not [regex]::IsMatch($required_references_text, $json_array_pattern)) {
+            throw "CommonModules manifest line $line_number contains malformed RequiredReferences JSON for '$module_file'."
+        }
+        $required_references = New-Object 'System.Collections.Generic.List[string]'
+        $seen_required_references = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($json_string_match in [regex]::Matches($required_references_text, $json_string_pattern)) {
+            try {
+                $required_reference = ConvertFrom-Json -InputObject $json_string_match.Value -ErrorAction Stop
+            }
+            catch {
+                throw "CommonModules manifest line $line_number contains malformed RequiredReferences JSON for '$module_file'."
+            }
+            if ([string]::IsNullOrEmpty($required_reference)) {
+                throw "CommonModules manifest line $line_number must contain nonempty RequiredReferences for '$module_file'."
+            }
+            if (-not [string]::Equals($required_reference, $required_reference.Trim(), [System.StringComparison]::Ordinal)) {
+                throw "CommonModules manifest line $line_number must contain already trimmed RequiredReferences for '$module_file'."
+            }
+            if ([string]::Equals($required_reference, 'Visual Basic For Applications', [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "CommonModules manifest line $line_number must not declare the always-active VBA standard library in RequiredReferences for '$module_file'."
+            }
+            if (-not $seen_required_references.Add($required_reference)) {
+                throw "CommonModules manifest line $line_number contains duplicate RequiredReferences '$required_reference' for '$module_file'."
+            }
+            $required_references.Add($required_reference)
+        }
+
+        $dependencies_text = $columns[2]
+        if ([regex]::IsMatch($dependencies_text, '\s')) {
+            throw "CommonModules manifest line $line_number must use whitespace-free Dependencies for '$module_file'."
+        }
+        if ($dependencies_text.Length -eq 0) {
+            $dependencies = @()
+        }
+        else {
+            $dependencies = @($dependencies_text.Split(','))
+            $seen_dependencies = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($dependency in $dependencies) {
+                if ($dependency.Length -eq 0) {
+                    throw "CommonModules manifest line $line_number contains an empty dependency for '$module_file'."
+                }
+                if ([string]::Equals($module_file, $dependency, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    throw "CommonModules manifest line $line_number declares a self dependency for '$module_file'."
+                }
+                if (-not $seen_dependencies.Add($dependency)) {
+                    throw "CommonModules manifest line $line_number contains duplicate dependency '$dependency' for '$module_file'."
+                }
+            }
+        }
+        $record = [pscustomobject]@{
+            ModuleFile = $module_file
+            Categories = $categories
+            Dependencies = $dependencies
+            RequiredReferences = $required_references.ToArray()
+            LineNumber = $line_number
+        }
+        $records.Add($record)
+        $records_by_module.Add($module_file, $record)
+        $line_index++
+    }
+
+    foreach ($record in $records) {
+        foreach ($dependency in $record.Dependencies) {
+            if (-not $records_by_module.ContainsKey($dependency)) {
+                throw "CommonModules manifest line $($record.LineNumber) has unknown dependency '$dependency' for '$($record.ModuleFile)'."
+            }
+            if (-not [string]::Equals($dependency, $records_by_module[$dependency].ModuleFile, [System.StringComparison]::Ordinal)) {
+                throw "CommonModules manifest line $($record.LineNumber) dependency '$dependency' must use the exact ModuleFile spelling '$($records_by_module[$dependency].ModuleFile)'."
+            }
+            $dependency_record = $records_by_module[$dependency]
+            $source_is_runtime = Test-OrdinalStringInSet -Value $record.Categories -AllowedValues @('runtime-baseline', 'runtime-baseline,public-udf', 'optional', 'optional,public-udf')
+            $dependency_is_test = Test-OrdinalStringInSet -Value $dependency_record.Categories -AllowedValues @('test-foundation', 'test-double')
+            if ($source_is_runtime -and $dependency_is_test) {
+                throw "CommonModules manifest line $($record.LineNumber) runtime-role module '$($record.ModuleFile)' cannot depend on test-role module '$dependency'."
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        Path = $resolved_path
+        Bytes = $bytes
+        Records = $records.ToArray()
+        RecordsByModule = $records_by_module
+    }
+}
+
 function Read-CommonModulesManifestModuleFiles {
     param(
         [Parameter(Mandatory = $true)]
         [string]$ManifestPath
     )
 
-    $encoding = [System.Text.Encoding]::GetEncoding(932)
-    $lines = [System.IO.File]::ReadAllLines((Resolve-Path -LiteralPath $ManifestPath).ProviderPath, $encoding)
-    $header_found = $false
-    $module_files = New-Object 'System.Collections.Generic.List[string]'
-
-    foreach ($line in $lines) {
-        if ([string]::IsNullOrWhiteSpace($line) -or $line.TrimStart().StartsWith('#')) {
-            continue
-        }
-
-        if (-not $header_found) {
-            if ($line -ne "ModuleFile`tCategories`tDependencies") {
-                throw "CommonModules manifest has an invalid header: $ManifestPath"
-            }
-            $header_found = $true
-            continue
-        }
-
-        $columns = $line.Split("`t")
-        if ($columns.Count -ne 3) {
-            throw "CommonModules manifest row must contain exactly 3 columns: $line"
-        }
-        if ([string]::IsNullOrWhiteSpace($columns[0])) {
-            throw "CommonModules manifest row has an empty ModuleFile value: $line"
-        }
-        $module_files.Add($columns[0].Trim())
-    }
-
-    if (-not $header_found) {
-        throw "CommonModules manifest header was not found: $ManifestPath"
-    }
-    if ($module_files.Count -eq 0) {
-        throw "CommonModules manifest contains no module rows: $ManifestPath"
-    }
-
-    return $module_files
+    $manifest = Read-CommonModulesManifest -ManifestPath $ManifestPath
+    return @($manifest.Records | ForEach-Object { $_.ModuleFile })
 }

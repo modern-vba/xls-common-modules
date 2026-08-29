@@ -450,9 +450,16 @@ Some implementations attempt to restore state, but complete restoration is not y
 
 ### Internal
 
-`CommonModules/src/CommonModules/common-modules-manifest.tsv` is the machine-readable tooling source of truth for CommonModules source file categories and direct dependencies. The collection workflow copies it to `common_modules_repo/common-modules-manifest.tsv`, so downstream tooling should resolve dependencies from the manifest in the distributed repository rather than scrape this Markdown section.
+`CommonModules/src/CommonModules/common-modules-manifest.tsv` is the canonical machine-readable contract for CommonModules package membership, classifications, direct CommonModule dependencies, and direct external VBA reference requirements. The collection workflow copies its validated bytes to `common_modules_repo/common-modules-manifest.tsv`; `common_modules_repo` is generated output and never an authoring source. Downstream tooling reads the distributed manifest rather than scraping this Markdown section or VBA source.
 
-The manifest is a TSV file with `ModuleFile`, `Categories`, and `Dependencies` columns. `ModuleFile` and each dependency use source file names such as `Lib_Common.bas` or `WorkbookService.cls`; `Categories` and `Dependencies` are comma-separated when they contain multiple values. Supported categories are `runtime-baseline`, `test-foundation`, `optional`, `test-double`, and `public-udf`.
+The manifest uses strict UTF-16LE with a BOM, CRLF throughout, and exactly one final CRLF. Its physical line grammar is zero or more whole-line comments beginning with `#` in the first code unit, the exact header `ModuleFile<TAB>Categories<TAB>Dependencies<TAB>RequiredReferences`, and one or more contiguous data rows. Comments cannot contain tabs, control characters, or trailing whitespace. Readers reject blank lines, comments after the header, normalization, encoding fallback, and malformed rows.
+
+| Column | Contract |
+| --- | --- |
+| `ModuleFile` | Ordinally preserved flat basename `<CommonModuleName>.bas`, `.cls`, or `.frm`, with a lowercase extension and a case-insensitively unique identity. |
+| `Categories` | Exactly one primary role: `runtime-baseline`, `test-foundation`, `optional`, or `test-double`. The `public-udf` modifier may appear only in the canonical whole-cell spellings `runtime-baseline,public-udf` or `optional,public-udf`; it is not another primary role. |
+| `Dependencies` | Empty or an exact, whitespace-free, declaration-ordered comma-separated list of target `ModuleFile` spellings. Multi-module dependency components and cycles are valid, but self-dependencies are not. Runtime-role modules may depend only on runtime-role modules; test-role modules may depend on either role family. |
+| `RequiredReferences` | A standalone JSON array of unique, nonempty, already-trimmed human-visible external reference names, in declaration order. Each row lists only references used directly by that source unit, never transitive requirements from its CommonModule dependencies. `Visual Basic For Applications` is omitted because the standard library is always active. |
 
 The following are treated as standard modules to import.
 

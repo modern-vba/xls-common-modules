@@ -4,6 +4,8 @@
 
 `CommonModules/src/CommonModules/common-modules-manifest.tsv` is the source of truth for which common modules are collected. For each listed module, COLLECT selects the newest file from the document source sets declared by `vba-project.json` files across the workspace. A `common_modules_repo` remains generated output and is never a collection source.
 
+The manifest is a strict four-column UTF-16LE-with-BOM contract for each module's primary role and optional `public-udf` modifier, direct CommonModule dependencies, and direct external VBA references. COLLECT validates it without normalization or source-code inference and preserves the canonical bytes in the generated package.
+
 ## Features
 
 This repository lets Excel VBA macros be treated as development assets that can be source-controlled, reused, and tested, rather than as logic confined inside a workbook.

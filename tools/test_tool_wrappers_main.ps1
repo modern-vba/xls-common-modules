@@ -34,6 +34,21 @@ function Write-TestFileSjis {
     [System.IO.File]::WriteAllText($Path, $Content, [System.Text.Encoding]::GetEncoding(932))
 }
 
+function Write-TestFileUtf16Le {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    $directory = Split-Path -Parent $Path
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+    [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UnicodeEncoding($false, $true, $true)))
+}
+
 function Test-True {
     param(
         [Parameter(Mandatory = $true)]
@@ -351,7 +366,12 @@ try {
     $collect_old = New-TestVbaProject -Root (Join-Path $collect_workspace_root 'ProjectOld') -ProjectName 'ProjectOld' -DocumentName 'OldBook'
     $collect_new = New-TestVbaProject -Root (Join-Path $collect_workspace_root 'Nested\ProjectNew') -ProjectName 'ProjectNew' -DocumentName 'NewBook'
     $collect_manifest_path = Join-Path $collect_canonical.SourceSetPath 'common-modules-manifest.tsv'
-    Write-TestFileSjis -Path $collect_manifest_path -Content "ModuleFile`tCategories`tDependencies`r`nShared.bas`truntime-baseline`t`r`n"
+    $collect_manifest_content = (@(
+        '# Unicode comment: 参照情報の宣言順序を保持。'
+        "ModuleFile`tCategories`tDependencies`tRequiredReferences"
+        "Shared.bas`truntime-baseline`t`t[ `"Unicode 参照`", `"Vendor, Library`", `"Quoted \`"Reference\`"`", `"C:\\Vendor\\Library`" ]"
+    ) -join "`r`n") + "`r`n"
+    Write-TestFileUtf16Le -Path $collect_manifest_path -Content $collect_manifest_content
     $canonical_module = Join-Path $collect_canonical.SourceSetPath 'Shared.bas'
     $old_module = Join-Path (Join-Path $collect_old.SourceSetPath 'common-modules') 'Shared.bas'
     $new_module = Join-Path (Join-Path $collect_new.SourceSetPath 'common-modules') 'Shared.bas'
@@ -369,9 +389,37 @@ try {
     & $collect_script '' '' '' '' '' $collect_output_root
     $collected_repository = Join-Path $collect_output_root 'common_modules_repo'
     $collected_module = Join-Path $collected_repository 'Shared.bas'
+    $collected_manifest = Join-Path $collected_repository 'common-modules-manifest.tsv'
     Test-Equal -Expected (Get-Content -LiteralPath $new_module -Raw) -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS did not select the newest project source.'
-    Test-True -Condition (Test-Path -LiteralPath (Join-Path $collected_repository 'common-modules-manifest.tsv') -PathType Leaf) -Message 'COLLECT_COMMON_MODS did not copy the manifest.'
+    Test-True -Condition (Test-Path -LiteralPath $collected_manifest -PathType Leaf) -Message 'COLLECT_COMMON_MODS did not copy the manifest.'
+    Test-True -Condition (Test-FileContentEqual -LeftPath $collect_manifest_path -RightPath $collected_manifest) -Message 'COLLECT_COMMON_MODS did not preserve the canonical manifest bytes.'
     Test-True -Condition (-not (Test-Path -LiteralPath (Join-Path $collected_repository 'Unlisted.bas'))) -Message 'COLLECT_COMMON_MODS copied a source file that was not listed in the manifest.'
+
+    $preserved_collect_manifest = Join-Path $collect_fixture_root 'preserved-manifest.tsv'
+    Copy-Item -LiteralPath $collected_manifest -Destination $preserved_collect_manifest -Force
+    [System.IO.File]::SetLastWriteTimeUtc($collected_manifest, [datetime]'2025-02-01T00:00:00Z')
+    [System.IO.File]::SetLastWriteTimeUtc($collected_module, [datetime]'2025-02-02T00:00:00Z')
+    $preserved_collect_manifest_time = [System.IO.File]::GetLastWriteTimeUtc($collected_manifest)
+    $preserved_collect_module_time = [System.IO.File]::GetLastWriteTimeUtc($collected_module)
+    Write-TestFileUtf8 -Path $collect_manifest_path -Content $collect_manifest_content
+    Invoke-ExpectedFailure -ExpectedMessage 'UTF-16LE with a BOM' -Script {
+        & $collect_script '' '' '' '' '' $collect_output_root
+    }
+    Test-True -Condition (Test-FileContentEqual -LeftPath $preserved_collect_manifest -RightPath $collected_manifest) -Message 'COLLECT_COMMON_MODS changed the output manifest before rejecting invalid encoding.'
+    Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'new`r`n" -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS changed an output module before rejecting invalid manifest encoding.'
+    Test-Equal -Expected $preserved_collect_manifest_time -Actual ([System.IO.File]::GetLastWriteTimeUtc($collected_manifest)) -Message 'COLLECT_COMMON_MODS rewrote the output manifest before rejecting invalid encoding.'
+    Test-Equal -Expected $preserved_collect_module_time -Actual ([System.IO.File]::GetLastWriteTimeUtc($collected_module)) -Message 'COLLECT_COMMON_MODS rewrote an output module before rejecting invalid manifest encoding.'
+
+    $invalid_collect_manifest_content = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`n# misplaced comment`r`nShared.bas`truntime-baseline`t`t[]`r`n"
+    Write-TestFileUtf16Le -Path $collect_manifest_path -Content $invalid_collect_manifest_content
+    Invoke-ExpectedFailure -ExpectedMessage 'exactly 4 tab-separated columns' -Script {
+        & $collect_script '' '' '' '' '' $collect_output_root
+    }
+    Test-True -Condition (Test-FileContentEqual -LeftPath $preserved_collect_manifest -RightPath $collected_manifest) -Message 'COLLECT_COMMON_MODS changed the output manifest before rejecting invalid grammar.'
+    Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'new`r`n" -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS changed an output module before rejecting invalid manifest grammar.'
+    Test-Equal -Expected $preserved_collect_manifest_time -Actual ([System.IO.File]::GetLastWriteTimeUtc($collected_manifest)) -Message 'COLLECT_COMMON_MODS rewrote the output manifest before rejecting invalid grammar.'
+    Test-Equal -Expected $preserved_collect_module_time -Actual ([System.IO.File]::GetLastWriteTimeUtc($collected_module)) -Message 'COLLECT_COMMON_MODS rewrote an output module before rejecting invalid manifest grammar.'
+    Write-TestFileUtf16Le -Path $collect_manifest_path -Content $collect_manifest_content
 
     $conflicting_tie_time = [datetime]'2025-01-04T00:00:00Z'
     [System.IO.File]::SetLastWriteTimeUtc($old_module, $conflicting_tie_time)
@@ -394,7 +442,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $tools_root 'VbaDevTool.psm1') -Destination $dist_tools_root -Force
     Copy-Item -LiteralPath (Join-Path $tools_root 'dist_common_mods_repo_main.ps1') -Destination $dist_tools_root -Force
     Write-TestFileSjis -Path (Join-Path $dist_source 'Shared.bas') -Content "Attribute VB_Name = `"Shared`"`r`n'distributed`r`n"
-    Write-TestFileSjis -Path (Join-Path $dist_source 'common-modules-manifest.tsv') -Content "ModuleFile`tCategories`tDependencies`r`nShared.bas`truntime-baseline`t`r`n"
+    Write-TestFileUtf16Le -Path (Join-Path $dist_source 'common-modules-manifest.tsv') -Content "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nShared.bas`truntime-baseline`t`t[]`r`n"
     Write-TestFileSjis -Path (Join-Path $dist_target_a 'Stale.bas') -Content "Attribute VB_Name = `"Stale`"`r`n"
     Copy-Item -LiteralPath (Join-Path $dist_source 'Shared.bas') -Destination $dist_target_b -Force
     Copy-Item -LiteralPath (Join-Path $dist_source 'common-modules-manifest.tsv') -Destination $dist_target_b -Force
@@ -405,6 +453,7 @@ try {
     foreach ($dist_target in @($dist_target_a, $dist_target_b)) {
         Test-Equal -Expected (Get-Content -LiteralPath (Join-Path $dist_source 'Shared.bas') -Raw) -Actual (Get-Content -LiteralPath (Join-Path $dist_target 'Shared.bas') -Raw) -Message "DIST_COMMON_MODS_REPO did not copy Shared.bas to '$dist_target'."
         Test-True -Condition (Test-Path -LiteralPath (Join-Path $dist_target 'common-modules-manifest.tsv') -PathType Leaf) -Message "DIST_COMMON_MODS_REPO did not copy the manifest to '$dist_target'."
+        Test-True -Condition (Test-FileContentEqual -LeftPath (Join-Path $dist_source 'common-modules-manifest.tsv') -RightPath (Join-Path $dist_target 'common-modules-manifest.tsv')) -Message "DIST_COMMON_MODS_REPO did not preserve manifest bytes in '$dist_target'."
         Test-True -Condition (-not (Test-Path -LiteralPath (Join-Path $dist_target 'Stale.bas'))) -Message "DIST_COMMON_MODS_REPO did not replace stale contents in '$dist_target'."
     }
     Test-Equal -Expected $unchanged_target_time -Actual ([System.IO.File]::GetLastWriteTimeUtc((Join-Path $dist_target_b 'Shared.bas'))) -Message 'DIST_COMMON_MODS_REPO rewrote an unchanged target file.'
