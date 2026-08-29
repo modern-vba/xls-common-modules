@@ -11,11 +11,35 @@ Option Base 0
 ' #############################################################################
 
 Public Sub Test_ErrRaiseSource_ClassSourceHasModuleAndMemberName(ByVal Assert As UnitTestAssert)
+    On Error Resume Next
+
+    ' --- Arrange ---
+    Dim probe_book As Workbook
+    Set probe_book = Application.Workbooks.Add
+
+    Dim probe_class As Variant
+    Set probe_class = probe_book.VBProject.VBComponents.Add(2)
+    probe_class.Name = "ErrSourceActiveProjectProbe"
+    Call probe_class.CodeModule.AddFromString( _
+        "Private Sub Probe()" & vbCrLf & _
+        "    Err.Raise Number:=vbObjectError + 1, Source:=""Class WrongClass.Probe"", Description:=""probe""" & vbCrLf & _
+        "End Sub")
+    Call probe_class.Activate
+
+    Dim is_probe_component_active As Boolean
+    is_probe_component_active = (Application.VBE.SelectedVBComponent Is probe_class)
+
+    If Not Assert.ErrorNotRaised(0, Err.Number, Err.Source, Err.Description, CaseName:="Arrange") Then
+        If Not probe_book Is Nothing Then Call probe_book.Close(SaveChanges:=False)
+        Exit Sub
+    End If
+
+    ' --- Act ---
     Dim mismatch_list As ObjectList
     Set mismatch_list = New ObjectList
 
     Dim vb_proj As Variant
-    Set vb_proj = Application.VBE.ActiveVBProject
+    Set vb_proj = ThisWorkbook.VBProject
 
     Dim vb_comp As Variant
     For Each vb_comp In vb_proj.VBComponents
@@ -24,7 +48,16 @@ Public Sub Test_ErrRaiseSource_ClassSourceHasModuleAndMemberName(ByVal Assert As
         End If
     Next vb_comp
 
-    Assert.Equals "", JoinStringList(mismatch_list)
+    Dim actual_mismatches As String
+    actual_mismatches = JoinStringList(mismatch_list)
+
+    Call probe_book.Close(SaveChanges:=False)
+
+    ' --- Assert ---
+    Assert.IsTrue is_probe_component_active, CaseName:="Probe class module is active"
+    If Not Assert.ErrorNotRaised(0, Err.Number, Err.Source, Err.Description) Then Exit Sub
+
+    Assert.Equals "", actual_mismatches
 End Sub
 
 Private Sub pCollectMismatch(ByVal MismatchList As ObjectList, ByVal VbComponent As Variant)
