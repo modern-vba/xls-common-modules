@@ -113,6 +113,35 @@ function Invoke-ExpectedFailure {
     throw "Expected failure containing '$ExpectedMessage' but the command succeeded."
 }
 
+function Invoke-TestCollectCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath,
+        [Parameter(Mandatory = $true)]
+        [string]$SearchRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$InvocationWorkingDirectory
+    )
+
+    $windows_powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $previous_error_action_preference = $ErrorActionPreference
+    Push-Location -LiteralPath $InvocationWorkingDirectory
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $windows_powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath $SearchRoot 2>&1 | ForEach-Object { [string]$_ })
+        $exit_code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous_error_action_preference
+        Pop-Location
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $exit_code
+        Output = ($output -join [Environment]::NewLine)
+    }
+}
+
 function New-TestProject {
     param(
         [Parameter(Mandatory = $true)]
@@ -386,7 +415,8 @@ try {
     $collect_output_root = Join-Path $collect_fixture_root 'output'
     New-Item -ItemType Directory -Path $collect_output_root -Force | Out-Null
     $collect_script = Join-Path $collect_tools_root 'collect_common_mods_main.ps1'
-    & $collect_script '' '' '' '' '' $collect_output_root
+    $collect_result = Invoke-TestCollectCommand -ScriptPath $collect_script -SearchRoot $collect_workspace_root -InvocationWorkingDirectory $collect_output_root
+    Test-Equal -Expected 0 -Actual $collect_result.ExitCode -Message "COLLECT_COMMON_MODS failed: $($collect_result.Output)"
     $collected_repository = Join-Path $collect_output_root 'common_modules_repo'
     $collected_module = Join-Path $collected_repository 'Shared.bas'
     $collected_manifest = Join-Path $collected_repository 'common-modules-manifest.tsv'
@@ -402,9 +432,9 @@ try {
     $preserved_collect_manifest_time = [System.IO.File]::GetLastWriteTimeUtc($collected_manifest)
     $preserved_collect_module_time = [System.IO.File]::GetLastWriteTimeUtc($collected_module)
     Write-TestFileUtf8 -Path $collect_manifest_path -Content $collect_manifest_content
-    Invoke-ExpectedFailure -ExpectedMessage 'UTF-16LE with a BOM' -Script {
-        & $collect_script '' '' '' '' '' $collect_output_root
-    }
+    $collect_result = Invoke-TestCollectCommand -ScriptPath $collect_script -SearchRoot $collect_workspace_root -InvocationWorkingDirectory $collect_output_root
+    Test-Equal -Expected 1 -Actual $collect_result.ExitCode -Message 'COLLECT_COMMON_MODS should reject an invalid manifest encoding.'
+    Test-True -Condition ($collect_result.Output -like '*UTF-16LE with a BOM*') -Message "COLLECT_COMMON_MODS returned an unexpected invalid-encoding error: $($collect_result.Output)"
     Test-True -Condition (Test-FileContentEqual -LeftPath $preserved_collect_manifest -RightPath $collected_manifest) -Message 'COLLECT_COMMON_MODS changed the output manifest before rejecting invalid encoding.'
     Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'new`r`n" -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS changed an output module before rejecting invalid manifest encoding.'
     Test-Equal -Expected $preserved_collect_manifest_time -Actual ([System.IO.File]::GetLastWriteTimeUtc($collected_manifest)) -Message 'COLLECT_COMMON_MODS rewrote the output manifest before rejecting invalid encoding.'
@@ -412,9 +442,9 @@ try {
 
     $invalid_collect_manifest_content = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`n# misplaced comment`r`nShared.bas`truntime-baseline`t`t[]`r`n"
     Write-TestFileUtf16Le -Path $collect_manifest_path -Content $invalid_collect_manifest_content
-    Invoke-ExpectedFailure -ExpectedMessage 'exactly 4 tab-separated columns' -Script {
-        & $collect_script '' '' '' '' '' $collect_output_root
-    }
+    $collect_result = Invoke-TestCollectCommand -ScriptPath $collect_script -SearchRoot $collect_workspace_root -InvocationWorkingDirectory $collect_output_root
+    Test-Equal -Expected 1 -Actual $collect_result.ExitCode -Message 'COLLECT_COMMON_MODS should reject an invalid manifest grammar.'
+    Test-True -Condition ($collect_result.Output -like '*exactly 4 tab-separated columns*') -Message "COLLECT_COMMON_MODS returned an unexpected invalid-grammar error: $($collect_result.Output)"
     Test-True -Condition (Test-FileContentEqual -LeftPath $preserved_collect_manifest -RightPath $collected_manifest) -Message 'COLLECT_COMMON_MODS changed the output manifest before rejecting invalid grammar.'
     Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'new`r`n" -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS changed an output module before rejecting invalid manifest grammar.'
     Test-Equal -Expected $preserved_collect_manifest_time -Actual ([System.IO.File]::GetLastWriteTimeUtc($collected_manifest)) -Message 'COLLECT_COMMON_MODS rewrote the output manifest before rejecting invalid grammar.'
@@ -422,12 +452,13 @@ try {
     Write-TestFileUtf16Le -Path $collect_manifest_path -Content $collect_manifest_content
 
     $conflicting_tie_time = [datetime]'2025-01-04T00:00:00Z'
+    Write-TestFileSjis -Path $old_module -Content "Attribute VB_Name = `"Shared`"`r`n'old with conflicting length`r`n"
     [System.IO.File]::SetLastWriteTimeUtc($old_module, $conflicting_tie_time)
     [System.IO.File]::SetLastWriteTimeUtc($new_module, $conflicting_tie_time)
-    Invoke-ExpectedFailure -ExpectedMessage 'same timestamp but different content' -Script {
-        & $collect_script '' '' '' '' '' $collect_output_root
-    }
-    Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'new`r`n" -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS changed output before resolving a conflicting newest-source tie.'
+    $collect_result = Invoke-TestCollectCommand -ScriptPath $collect_script -SearchRoot $collect_workspace_root -InvocationWorkingDirectory $collect_output_root
+    Test-Equal -Expected 0 -Actual $collect_result.ExitCode -Message "COLLECT_COMMON_MODS should fall back for a conflicting newest-source metadata tie: $($collect_result.Output)"
+    Test-True -Condition ($collect_result.Output -like '*same timestamp but different lengths or form sidecar shapes*') -Message "COLLECT_COMMON_MODS did not warn about a conflicting newest-source metadata tie: $($collect_result.Output)"
+    Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'canonical`r`n" -Actual (Get-Content -LiteralPath $collected_module -Raw) -Message 'COLLECT_COMMON_MODS did not use the authoring source fallback for a conflicting newest-source metadata tie.'
 
     $dist_fixture_root = Join-Path $temp_root 'dist-fixture'
     $dist_workspace_root = Join-Path $dist_fixture_root 'workspace'

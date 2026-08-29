@@ -73,7 +73,7 @@ function Get-RequiredDirectoryTarget {
     }
 
     $resolved_path = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
-    $item = Get-Item -LiteralPath $resolved_path -ErrorAction Stop
+    $item = Get-Item -LiteralPath $resolved_path -Force -ErrorAction Stop
     if (-not $item.PSIsContainer) {
         throw "$Description must be a directory: $resolved_path"
     }

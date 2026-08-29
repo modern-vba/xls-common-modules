@@ -2,7 +2,7 @@
 
 `xls-common-modules` is a development repository for `CommonModules`, which are shared by multiple Excel VBA tools, and for supporting workbook import, extraction, distribution, formatting, and documentation generation.
 
-`CommonModules/src/CommonModules/common-modules-manifest.tsv` is the source of truth for which common modules are collected. For each listed module, COLLECT selects the newest file from the document source sets declared by `vba-project.json` files across the workspace. A `common_modules_repo` remains generated output and is never a collection source.
+`COLLECT_COMMON_MODS` accepts exactly one explicit Collection Search Root and recursively discovers the document source sets declared by `vba-project.json` files beneath it. The unique discovered source-set root that directly owns `common-modules-manifest.tsv` is the CommonModules authoring authority. For each listed module, COLLECT selects the newest eligible source unit by filesystem metadata. A `common_modules_repo` remains generated output and is never a collection source.
 
 The manifest is a strict four-column UTF-16LE-with-BOM contract for each module's primary role and optional `public-udf` modifier, direct CommonModule dependencies, and direct external VBA references. COLLECT validates it without normalization or source-code inference and preserves the canonical bytes in the generated package.
 
@@ -12,7 +12,7 @@ This repository lets Excel VBA macros be treated as development assets that can 
 
 One way to share common processing is to place it in an `.xlsb` or add-in. However, when deliverables depend on external workbooks or add-in references, they are no longer self-contained single files and become less portable. Another approach is to manually copy common processing into each `.xlsm`; that keeps each `.xlsm` easy to distribute, but makes updates across multiple workbooks easy to miss.
 
-`xls-common-modules` centrally manages the CommonModules manifest, collects the newest manifest-listed sources from workspace vba-dev projects into `common_modules_repo`, and updates projects through `UPDATE_COMMON_MODS`. Distribution keeps the portability of a single `.xlsm`, while development can keep common modules current across multiple individual tools.
+`xls-common-modules` centrally manages the CommonModules manifest, collects the newest manifest-listed sources from vba-dev projects below an explicit Collection Search Root into a closed `common_modules_repo` package, and updates projects through `UPDATE_COMMON_MODS`. Distribution keeps the portability of a single `.xlsm`, while development can keep common modules current across multiple individual tools.
 
 Excel macros have very few widely established unit-test frameworks. `xls-common-modules` provides a lightweight test runner, assertions, and a test double foundation that run inside Excel workbooks. The normal automated path is `vba-dev test`, which builds the selected document and runs `UnitTestMain` inside the generated workbook.
 
@@ -63,7 +63,7 @@ Call WsSrv.WriteCell(target_cell, "value", TypeConvert:=False)
 
 `CommonModules/` is a workbook-backed `vba-dev` project root. Its document source set is `CommonModules/src/CommonModules`, the template workbook is `CommonModules/src/CommonModules/CommonModules.xlsm`, and generated workbooks are written under `CommonModules/bin/CommonModules` and `CommonModules/publish/CommonModules`.
 
-`CommonModules/vba-project.json` keeps the `vba-dev new excel` default CommonModules repository relationship for this repository layout: `commonModulesRepository` is `../common_modules_repo`. All manifest-listed CommonModules entries are installed as requested modules, equivalent to adding every common module to the project.
+`CommonModules/vba-project.json` keeps the `vba-dev new excel` default CommonModules repository relationship for this repository layout: `commonModulesRepository` is `../common_modules_repo`. All manifest-listed CommonModules entries are installed as requested modules, equivalent to adding every common module to the project. COLLECT does not use `commonModulesRepository` to locate its output; it always uses the direct `common_modules_repo` child of the invocation-start working directory.
 
 ```powershell
 vba-dev doctor --project .\CommonModules
@@ -121,7 +121,7 @@ Actual tests substitute dependencies such as `WorksheetServiceTestDouble`, `Work
 
 ## Tooling
 
-Use the `.bat` files or the `.lnk` files placed in individual tool folders when those entry points exist. The usual operation is to drag and drop the target folder, source set directory, or `.xlsm` onto the `.bat` / `.lnk`. When running from the command line, call the `.bat` files.
+Use the `.bat` files or the `.lnk` files placed in individual tool folders when those entry points exist. The usual operation is to drag and drop the target folder, source set directory, or `.xlsm` onto the `.bat` / `.lnk`. When running from the command line, call the `.bat` files. COLLECT requires exactly one Collection Search Root argument; a relative root is resolved against the invocation-start working directory.
 
 | Purpose | Recommended entry point | Target example |
 | --- | --- | --- |
@@ -129,8 +129,12 @@ Use the `.bat` files or the `.lnk` files placed in individual tool folders when 
 | Extract VBA source from `SampleWebTool.xlsm` into workbook-local source set | `tools/EXP_MODS.BAT` | `xls-web-tools/SampleWebTool/SampleWebTool.xlsm` |
 | Generate the API reference for a source set | `tools/GEN_DOC.BAT` | `xls-web-tools/SampleWebTool/src/SampleWebTool` |
 | Update CommonModules and build all vba-dev documents under a folder | `tools/UPDATE_COMMON_MODS.BAT` | `xls-web-tools` |
-| Collect the newest manifest-listed module from all workspace `vba-project.json` source sets into `common_modules_repo` | `tools/COLLECT_COMMON_MODS.BAT` | `xls-common-modules` |
+| Collect a closed package from all `vba-project.json` source sets below a Search Root into the current directory's `common_modules_repo` | `tools/COLLECT_COMMON_MODS.BAT` | `..` from the `xls-common-modules` root |
 | Distribute to each individual tool repository's `common_modules_repo` | `tools/DIST_COMMON_MODS_REPO.BAT` | `xls-common-modules/common_modules_repo` |
+
+`COLLECT_COMMON_MODS` validates every discovered project, document source path, source-set inventory, and the strict canonical manifest before mutating output. It does not descend into reparse child directories or generated and administrative trees. Module selection and the `UNCHANGED` package check use exact inventory names, `LastWriteTimeUtc`, and `Length`, never source contents or hashes. A form candidate includes its optional same-directory `.frx`; ambiguous newest metadata falls back with a warning to the mandatory CommonModules authoring candidate.
+
+If the existing package does not match that metadata exactly, COLLECT clears it and sequentially copies only the validated manifest, one selected source unit per manifest row, and each selected form's matching `.frx`. Stale, nested, and otherwise unexpected entries are removed. Copy or deletion failure exits with code `1` and may leave a partial package; rerun after correcting the cause. A matching package is reported as `UNCHANGED` without writes.
 
 `DIST_COMMON_MODS_REPO` is intentionally a small PowerShell copy workflow. It uses the supplied `common_modules_repo` as its source, finds existing `common_modules_repo` directories directly under the workspace's immediate project directories, excludes the source itself, leaves byte-identical flat targets unchanged, and replaces every other target's contents in order. It does not create opt-in targets, infer them from project manifests, or provide a transaction or rollback layer; if a later copy fails, inspect the reported target and rerun the command after correcting the problem.
 
@@ -152,6 +156,10 @@ The following examples are run from the `xls-common-modules` root.
 
 # Update CommonModules and build all vba-dev documents under xls-web-tools
 .\tools\UPDATE_COMMON_MODS.BAT ..\xls-web-tools
+
+# Collect from every vba-dev source set below the workspace root.
+# Output is .\common_modules_repo because the current directory is xls-common-modules.
+.\tools\COLLECT_COMMON_MODS.BAT ..
 
 # Check VBA source formatting
 powershell -ExecutionPolicy bypass -NoLogo -NonInteractive -File .\tools\format_vba_source_main.ps1 ..\xls-web-tools\SampleWebTool\src\SampleWebTool -Recurse -Check

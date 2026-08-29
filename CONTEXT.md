@@ -14,7 +14,7 @@ The whole library shared by multiple Excel VBA tools.
 _Avoid_: an individual common module, an individual tool
 
 **Common module**:
-A shared VBA source unit listed by the canonical CommonModules manifest. COLLECT chooses its bytes from the newest matching file in workspace project source sets; a `common_modules_repo` is generated output rather than a source candidate.
+A shared VBA source unit listed by the canonical CommonModules manifest. COLLECT chooses its bytes from the newest eligible matching file in project source sets discovered below the explicit `Collection Search Root`; a `common_modules_repo` is generated output rather than a source candidate.
 _Avoid_: individual module, tool-side copy
 
 **Common module primary role**:
@@ -46,7 +46,7 @@ A generated closed flat package directory named `common_modules_repo`. It contai
 _Avoid_: authoring source set, transaction workspace, package cache
 
 **Collection Search Root**:
-The workspace directory explicitly supplied to COLLECT. COLLECT recursively discovers `vba-project.json` files without descending into reparse child directories; the explicit root itself may be a reparse path, while neither the script location nor a discovered package repository substitutes for this input.
+The one required directory argument supplied to COLLECT. A relative value is resolved against the `Wrapper Repository Parent`. COLLECT recursively discovers `vba-project.json` files without descending into reparse child directories; the explicit root itself may be a reparse path, while neither the script location nor a discovered package repository substitutes for this input.
 _Avoid_: output root, script repository, distribution search root
 
 **CommonModules Authoring Source Set**:
@@ -221,7 +221,7 @@ Developer: May comments or blank lines appear between manifest data rows?
 Domain expert: No. Allow only a contiguous whole-line comment prologue whose `#` begins in column one, then the exact header, one or more contiguous data rows, and the final CRLF. Blank or whitespace-only lines, comments after the header, indented or inline comments, and duplicate headers are invalid rather than ignored.
 
 Developer: May `ModuleFile` point into a subdirectory and be flattened when distributed?
-Domain expert: No. `ModuleFile` is the exact flat basename `<common module name>.bas`, `.cls`, or `.frm`, never a relative path. COLLECT finds every `vba-project.json` under the explicit `Collection Search Root`, resolves each document `sourcePath`, searches those source sets recursively for the basename, and selects the greatest `LastWriteTimeUtc`. At equal newest timestamps it compares only `Length`: equal lengths are treated as equivalent, preferring the CommonModules candidate when it is tied and otherwise using ordinal path order; different lengths use the CommonModules fallback. Collection writes the selected source unit at the distribution repository root, so source subdirectories do not change the flat output layout.
+Domain expert: No. `ModuleFile` is the exact flat basename `<common module name>.bas`, `.cls`, or `.frm`, never a relative path. COLLECT finds every exact ordinary `vba-project.json` under the explicit `Collection Search Root`, resolves each document `sourcePath`, searches those source sets recursively for one case-insensitive basename match, and selects the greatest `LastWriteTimeUtc`. At equal newest timestamps it compares only `Length`: equal lengths are treated as equivalent, preferring the CommonModules candidate when it is tied and otherwise using ordinal path order; different lengths use the CommonModules fallback. Collection writes the selected source unit with the manifest's exact casing at the package root, so source subdirectories do not change the flat output layout.
 
 Developer: How does COLLECT distinguish the canonical manifest from manifests in generated repositories?
 Domain expert: The canonical manifest is the one directly contained by the unique `CommonModules Authoring Source Set` discovered through a project document `sourcePath`. COLLECT writes to `common_modules_repo` directly under the `Wrapper Repository Parent`; neither the containing project's `commonModulesRepository` nor a generated repository manifest establishes wrapper output authority.
