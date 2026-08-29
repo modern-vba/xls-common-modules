@@ -312,6 +312,49 @@ function Test-OrdinalStringInSet {
     return $false
 }
 
+function Test-JsonEscapedSurrogatePairs {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    $index = 1
+    while ($index -lt $Value.Length - 1) {
+        if ($Value[$index] -ne '\') {
+            $index++
+            continue
+        }
+
+        if ($Value[$index + 1] -ne 'u') {
+            $index += 2
+            continue
+        }
+
+        $code_unit = [System.Convert]::ToInt32($Value.Substring($index + 2, 4), 16)
+        $index += 6
+        if ($code_unit -ge 0xd800 -and $code_unit -le 0xdbff) {
+            if ($index + 5 -ge $Value.Length -or
+                $Value[$index] -ne '\' -or
+                $Value[$index + 1] -ne 'u') {
+                return $false
+            }
+
+            $low_surrogate = [System.Convert]::ToInt32($Value.Substring($index + 2, 4), 16)
+            if ($low_surrogate -lt 0xdc00 -or $low_surrogate -gt 0xdfff) {
+                return $false
+            }
+            $index += 6
+            continue
+        }
+
+        if ($code_unit -ge 0xdc00 -and $code_unit -le 0xdfff) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 function Read-CommonModulesManifest {
     param(
         [Parameter(Mandatory = $true)]
@@ -418,6 +461,9 @@ function Read-CommonModulesManifest {
         $required_references = New-Object 'System.Collections.Generic.List[string]'
         $seen_required_references = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
         foreach ($json_string_match in [regex]::Matches($required_references_text, $json_string_pattern)) {
+            if (-not (Test-JsonEscapedSurrogatePairs -Value $json_string_match.Value)) {
+                throw "CommonModules manifest line $line_number contains malformed RequiredReferences JSON for '$module_file'."
+            }
             try {
                 $required_reference = ConvertFrom-Json -InputObject $json_string_match.Value -ErrorAction Stop
             }

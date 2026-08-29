@@ -47,7 +47,10 @@ function Assert-Like {
         [string]$Message
     )
 
-    if ($Actual -notlike $Pattern) {
+    $unwrapped_actual = [System.Text.RegularExpressions.Regex]::Replace($Actual, '\s+\|\s+', ' ')
+    $normalized_actual = [System.Text.RegularExpressions.Regex]::Replace($unwrapped_actual, '\s+', ' ')
+    $normalized_pattern = [System.Text.RegularExpressions.Regex]::Replace($Pattern, '\s+', ' ')
+    if ($normalized_actual -notlike $normalized_pattern) {
         throw "$Message Expected output matching '$Pattern' but got:`r`n$Actual"
     }
 }
@@ -76,14 +79,46 @@ function Invoke-Dist {
         [Parameter(Mandatory = $true)]
         [string]$WorkingDirectory,
 
-        [string[]]$Arguments = @()
+        [string[]]$Arguments = @(),
+
+        [string]$CultureName
     )
+
+    $invocation_script = $dist_script
+    $invocation_arguments = $Arguments
+    if ($CultureName.Length -gt 0) {
+        $culture_driver = Join-Path $WorkingDirectory 'invoke-dist-under-culture.ps1'
+        $culture_driver_content = @'
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$DistScript,
+
+    [Parameter(Mandatory = $true)]
+    [string]$CultureName,
+
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$DistArguments
+)
+
+$culture = [System.Globalization.CultureInfo]::GetCultureInfo($CultureName)
+[System.Threading.Thread]::CurrentThread.CurrentCulture = $culture
+[System.Threading.Thread]::CurrentThread.CurrentUICulture = $culture
+& $DistScript @DistArguments
+exit $LASTEXITCODE
+'@
+        Write-TestFile `
+            -Path $culture_driver `
+            -Content $culture_driver_content `
+            -Encoding (New-Object System.Text.UTF8Encoding($true))
+        $invocation_script = $culture_driver
+        $invocation_arguments = @($dist_script, $CultureName) + $Arguments
+    }
 
     Push-Location -LiteralPath $WorkingDirectory
     $previous_error_action_preference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $output = & $test_host_executable -NoProfile -ExecutionPolicy Bypass -File $dist_script @Arguments 2>&1
+        $output = & $test_host_executable -NoProfile -ExecutionPolicy Bypass -File $invocation_script @invocation_arguments 2>&1
         $exit_code = $LASTEXITCODE
     }
     finally {
@@ -93,7 +128,7 @@ function Invoke-Dist {
 
     return [pscustomobject]@{
         ExitCode = $exit_code
-        Output = ($output | Out-String)
+        Output = (($output | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine)
     }
 }
 
@@ -102,9 +137,9 @@ function Write-ValidPackage {
         [Parameter(Mandatory = $true)]
         [string]$RepositoryPath,
 
-        [string]$ModuleName = 'Shared.bas',
+        [string]$ModuleName = 'Feature.bas',
 
-        [string]$ModuleContent = "Attribute VB_Name = `"Shared`"`r`n'package source`r`n"
+        [string]$ModuleContent = "Attribute VB_Name = `"Feature`"`r`n'package source`r`n"
     )
 
     New-Item -ItemType Directory -Path $RepositoryPath -Force | Out-Null
@@ -252,19 +287,19 @@ try {
     $non_target_project = Join-Path $search_root 'ProjectWithoutRepository'
     New-Item -ItemType Directory -Path $source_repository, $target_repository, $nested_repository, $non_target_project -Force | Out-Null
 
-    $manifest_text = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nShared.bas`truntime-baseline`t`t[]`r`n"
+    $manifest_text = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nFeature.bas`truntime-baseline`t`t[]`r`n"
     Write-TestFile -Path (Join-Path $source_repository 'common-modules-manifest.tsv') -Content $manifest_text -Encoding $utf16_le
-    Write-TestFile -Path (Join-Path $source_repository 'Shared.bas') -Content "Attribute VB_Name = `"Shared`"`r`n'distributed source`r`n" -Encoding $shift_jis
+    Write-TestFile -Path (Join-Path $source_repository 'Feature.bas') -Content "Attribute VB_Name = `"Feature`"`r`n'distributed source`r`n" -Encoding $shift_jis
     Write-TestFile -Path (Join-Path $target_repository 'Stale.bas') -Content "Attribute VB_Name = `"Stale`"`r`n" -Encoding $shift_jis
     Write-TestFile -Path (Join-Path $nested_repository 'NestedSentinel.bas') -Content "Attribute VB_Name = `"NestedSentinel`"`r`n" -Encoding $shift_jis
 
     $absolute_result = Invoke-Dist -WorkingDirectory $working_directory -Arguments @($search_root)
     Assert-Equal -Expected 0 -Actual $absolute_result.ExitCode -Message "DIST failed with an absolute independent Distribution Search Root. Output: $($absolute_result.Output)"
-    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $target_repository 'Shared.bas') -PathType Leaf) -Message 'DIST did not update the opted-in immediate-child target.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $target_repository 'Feature.bas') -PathType Leaf) -Message 'DIST did not update the opted-in immediate-child target.'
     Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $target_repository 'Stale.bas'))) -Message 'DIST did not clear stale target content.'
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $nested_repository 'NestedSentinel.bas') -PathType Leaf) -Message 'DIST recursively discovered and changed a nested repository.'
     Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $non_target_project 'common_modules_repo'))) -Message 'DIST created a missing opt-in repository.'
-    Assert-True -Condition ((Get-Content -LiteralPath (Join-Path $source_repository 'Shared.bas') -Raw) -like '*distributed source*') -Message 'DIST modified the central source repository.'
+    Assert-True -Condition ((Get-Content -LiteralPath (Join-Path $source_repository 'Feature.bas') -Raw) -like '*distributed source*') -Message 'DIST modified the central source repository.'
 
     Write-TestFile -Path (Join-Path $target_repository 'StaleAgain.bas') -Content "Attribute VB_Name = `"StaleAgain`"`r`n" -Encoding $shift_jis
     $relative_result = Invoke-Dist -WorkingDirectory $working_directory -Arguments @('..\distribution-search-root')
@@ -286,7 +321,7 @@ try {
     New-Item -ItemType Junction -Path $search_root_alias -Target $search_alias_fixture.SearchRoot | Out-Null
     $search_alias_result = Invoke-Dist -WorkingDirectory $search_alias_fixture.WorkingDirectory -Arguments @($search_root_alias)
     Assert-Equal -Expected 0 -Actual $search_alias_result.ExitCode -Message "DIST rejected an enumerable explicit reparse Search Root. Output: $($search_alias_result.Output)"
-    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $search_alias_fixture.TargetRepository 'Shared.bas') -PathType Leaf) -Message 'DIST did not use the explicit reparse Search Root.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $search_alias_fixture.TargetRepository 'Feature.bas') -PathType Leaf) -Message 'DIST did not use the explicit reparse Search Root.'
 
     $missing_source_root = Join-Path $temp_root 'missing-source'
     $missing_source_working = Join-Path $missing_source_root 'wrapper'
@@ -320,6 +355,29 @@ try {
     New-Item -ItemType Junction -Path (Join-Path $source_link_working 'common_modules_repo') -Target $source_link_backing | Out-Null
     [void](Invoke-ExpectedDistFailure -WorkingDirectory $source_link_working -Arguments @($source_link_search) -ExpectedPattern '*ordinary non-reparse directory*' -Message 'DIST followed a reparse CWD source repository.')
 
+    $bare_carriage_return_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'valid-bare-carriage-return-source')
+    Write-TestFile -Path (Join-Path $bare_carriage_return_fixture.SourceRepository 'Feature.bas') -Content "Attribute VB_Name = `"Feature`"`rOption Explicit`r" -Encoding $shift_jis
+    $bare_carriage_return_result = Invoke-Dist -WorkingDirectory $bare_carriage_return_fixture.WorkingDirectory -Arguments @($bare_carriage_return_fixture.SearchRoot)
+    Assert-Equal -Expected 0 -Actual $bare_carriage_return_result.ExitCode -Message "DIST rejected bare-CR VBA source lines. Output: $($bare_carriage_return_result.Output)"
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $bare_carriage_return_fixture.TargetRepository 'Feature.bas') -PathType Leaf) -Message 'DIST did not distribute a source package with bare-CR line endings.'
+
+    $ignored_word_character_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'valid-ignored-vb-name-word-character')
+    $ignored_word_character_source = "Attribute VB_Name = `"Feature`"`r`nAttribute VB_Name・ = `"IgnoredMiddleDot`"`r`nAttribute VB_Name§ = `"IgnoredSectionSign`"`r`n"
+    Write-TestFile -Path (Join-Path $ignored_word_character_fixture.SourceRepository 'Feature.bas') -Content $ignored_word_character_source -Encoding $shift_jis
+    $ignored_word_character_result = Invoke-Dist -WorkingDirectory $ignored_word_character_fixture.WorkingDirectory -Arguments @($ignored_word_character_fixture.SearchRoot)
+    Assert-Equal -Expected 0 -Actual $ignored_word_character_result.ExitCode -Message "DIST treated a parser-owned VB_Name word-character continuation as metadata. Output: $($ignored_word_character_result.Output)"
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $ignored_word_character_fixture.TargetRepository 'Feature.bas') -PathType Leaf) -Message 'DIST did not distribute a package whose non-metadata VB_Name continuations use parser-owned punctuation word characters.'
+
+    $culture_invariant_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'valid-culture-invariant-object-header')
+    Remove-Item -LiteralPath (Join-Path $culture_invariant_fixture.SourceRepository 'Feature.bas') -Force
+    $culture_invariant_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nTurkishCultureClass.cls`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $culture_invariant_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $culture_invariant_manifest -Encoding $utf16_le
+    $culture_invariant_source = "VERSION 1.0 CLASS`r`nBEGIN`r`nEND`r`nAttribute VB_Name = `"TurkishCultureClass`"`r`n"
+    Write-TestFile -Path (Join-Path $culture_invariant_fixture.SourceRepository 'TurkishCultureClass.cls') -Content $culture_invariant_source -Encoding $shift_jis
+    $culture_invariant_result = Invoke-Dist -WorkingDirectory $culture_invariant_fixture.WorkingDirectory -Arguments @($culture_invariant_fixture.SearchRoot) -CultureName 'tr-TR'
+    Assert-Equal -Expected 0 -Actual $culture_invariant_result.ExitCode -Message "DIST object-header parsing depended on the ambient Turkish culture. Output: $($culture_invariant_result.Output)"
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $culture_invariant_fixture.TargetRepository 'TurkishCultureClass.cls') -PathType Leaf) -Message 'DIST did not distribute a valid object header under Turkish culture.'
+
     foreach ($source_defect in @('extra-file', 'nested-directory', 'missing-module', 'invalid-manifest', 'orphan-sidecar')) {
         $defect_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root ('source-defect-' + $source_defect))
         switch ($source_defect) {
@@ -330,7 +388,7 @@ try {
                 New-Item -ItemType Directory -Path (Join-Path $defect_fixture.SourceRepository 'Nested') -Force | Out-Null
             }
             'missing-module' {
-                Remove-Item -LiteralPath (Join-Path $defect_fixture.SourceRepository 'Shared.bas') -Force
+                Remove-Item -LiteralPath (Join-Path $defect_fixture.SourceRepository 'Feature.bas') -Force
             }
             'invalid-manifest' {
                 Write-TestFile -Path (Join-Path $defect_fixture.SourceRepository 'common-modules-manifest.tsv') -Content "invalid`r`n" -Encoding (New-Object System.Text.UTF8Encoding($true))
@@ -343,6 +401,130 @@ try {
         [void](Invoke-ExpectedDistFailure -WorkingDirectory $defect_fixture.WorkingDirectory -Arguments @($defect_fixture.SearchRoot) -ExpectedPattern '*Distribution global failure*' -Message "DIST accepted source defect '$source_defect'.")
         Assert-True -Condition (Test-Path -LiteralPath (Join-Path $defect_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message "Source defect '$source_defect' mutated a target before global validation completed."
     }
+
+    $identity_case_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-identity-case')
+    Write-TestFile -Path (Join-Path $identity_case_fixture.SourceRepository 'Feature.bas') -Content "Attribute VB_Name = `"feature`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $identity_case_fixture.WorkingDirectory -Arguments @($identity_case_fixture.SearchRoot) -ExpectedPattern '*exact manifest identity*' -Message 'DIST accepted source metadata whose identity casing differed from its manifest basename.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $identity_case_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Source metadata identity validation mutated a target.'
+
+    $standard_kind_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-standard-kind')
+    Write-TestFile -Path (Join-Path $standard_kind_fixture.SourceRepository 'Feature.bas') -Content "VERSION 1.0 CLASS`r`nAttribute VB_Name = `"Feature`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $standard_kind_fixture.WorkingDirectory -Arguments @($standard_kind_fixture.SearchRoot) -ExpectedPattern '*declares source kind*instead of*StandardModule*' -Message 'DIST accepted class source metadata under a standard-module filename.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $standard_kind_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Source kind validation mutated a target.'
+
+    $duplicate_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-duplicate-identity')
+    $duplicate_identity_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nFeature.bas`truntime-baseline`t`t[]`r`nfeature.cls`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $duplicate_identity_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $duplicate_identity_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $duplicate_identity_fixture.SourceRepository 'feature.cls') -Content "VERSION 1.0 CLASS`r`nAttribute VB_Name = `"feature`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $duplicate_identity_fixture.WorkingDirectory -Arguments @($duplicate_identity_fixture.SearchRoot) -ExpectedPattern '*duplicate CommonModuleName*' -Message 'DIST accepted a case-insensitive duplicate CommonModuleName across source extensions.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $duplicate_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Duplicate CommonModuleName validation mutated a target.'
+
+    $invalid_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-invalid-identity')
+    Remove-Item -LiteralPath (Join-Path $invalid_identity_fixture.SourceRepository 'Feature.bas') -Force
+    $invalid_identity_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nBad-Name.bas`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $invalid_identity_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $invalid_identity_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $invalid_identity_fixture.SourceRepository 'Bad-Name.bas') -Content "Attribute VB_Name = `"Bad-Name`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $invalid_identity_fixture.WorkingDirectory -Arguments @($invalid_identity_fixture.SearchRoot) -ExpectedPattern '*invalid ModuleIdentity*' -Message 'DIST accepted a source ModuleIdentity that is not a VBA identifier.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $invalid_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Invalid ModuleIdentity validation mutated a target.'
+
+    $punctuation_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-punctuation-identity')
+    Remove-Item -LiteralPath (Join-Path $punctuation_identity_fixture.SourceRepository 'Feature.bas') -Force
+    $punctuation_identity_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`n・.bas`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $punctuation_identity_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $punctuation_identity_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $punctuation_identity_fixture.SourceRepository '・.bas') -Content "Attribute VB_Name = `"・`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $punctuation_identity_fixture.WorkingDirectory -Arguments @($punctuation_identity_fixture.SearchRoot) -ExpectedPattern '*invalid ModuleIdentity*' -Message 'DIST accepted punctuation outside the canonical package identifier subset.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $punctuation_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Canonical identifier subset validation mutated a target.'
+
+    $reserved_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-reserved-identity')
+    Remove-Item -LiteralPath (Join-Path $reserved_identity_fixture.SourceRepository 'Feature.bas') -Force
+    $reserved_identity_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nShared.bas`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $reserved_identity_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $reserved_identity_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $reserved_identity_fixture.SourceRepository 'Shared.bas') -Content "Attribute VB_Name = `"Shared`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $reserved_identity_fixture.WorkingDirectory -Arguments @($reserved_identity_fixture.SearchRoot) -ExpectedPattern '*invalid ModuleIdentity*' -Message 'DIST accepted a reserved VBA identifier as ModuleIdentity.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $reserved_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Reserved ModuleIdentity validation mutated a target.'
+
+    $utf8_source_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-utf8-source')
+    Remove-Item -LiteralPath (Join-Path $utf8_source_fixture.SourceRepository 'Feature.bas') -Force
+    $japanese_identity_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`n共有.bas`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $utf8_source_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $japanese_identity_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $utf8_source_fixture.SourceRepository '共有.bas') -Content "Attribute VB_Name = `"共有`"`r`n' 日本語`r`n" -Encoding (New-Object System.Text.UTF8Encoding($false, $true))
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $utf8_source_fixture.WorkingDirectory -Arguments @($utf8_source_fixture.SearchRoot) -ExpectedPattern '*Distribution global failure*' -Message 'DIST accepted a UTF-8 encoded VBA source instead of canonical Windows-932.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $utf8_source_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Source encoding validation mutated a target.'
+
+    $utf8_bom_source_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-utf8-bom-source')
+    Remove-Item -LiteralPath (Join-Path $utf8_bom_source_fixture.SourceRepository 'Feature.bas') -Force
+    Write-TestFile -Path (Join-Path $utf8_bom_source_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $japanese_identity_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $utf8_bom_source_fixture.SourceRepository '共有.bas') -Content "Attribute VB_Name = `"共有`"`r`n' 日本語`r`n" -Encoding (New-Object System.Text.UTF8Encoding($true, $true))
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $utf8_bom_source_fixture.WorkingDirectory -Arguments @($utf8_bom_source_fixture.SearchRoot) -ExpectedPattern '*Distribution global failure*' -Message 'DIST accepted a UTF-8 BOM source through encoding auto-detection.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $utf8_bom_source_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'BOM source encoding validation mutated a target.'
+
+    $overlength_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-overlength-identity')
+    Remove-Item -LiteralPath (Join-Path $overlength_identity_fixture.SourceRepository 'Feature.bas') -Force
+    $overlength_identity = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+    $overlength_identity_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`n$overlength_identity.bas`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $overlength_identity_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $overlength_identity_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $overlength_identity_fixture.SourceRepository "$overlength_identity.bas") -Content "Attribute VB_Name = `"$overlength_identity`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $overlength_identity_fixture.WorkingDirectory -Arguments @($overlength_identity_fixture.SearchRoot) -ExpectedPattern '*invalid ModuleIdentity*' -Message 'DIST accepted a source ModuleIdentity longer than 31 Unicode code points.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $overlength_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Overlength ModuleIdentity validation mutated a target.'
+
+    $missing_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-missing-identity')
+    Write-TestFile -Path (Join-Path $missing_identity_fixture.SourceRepository 'Feature.bas') -Content "'missing metadata`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $missing_identity_fixture.WorkingDirectory -Arguments @($missing_identity_fixture.SearchRoot) -ExpectedPattern '*ModuleIdentity record*' -Message 'DIST accepted source without authoritative ModuleIdentity metadata.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $missing_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Missing ModuleIdentity validation mutated a target.'
+
+    $misplaced_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-misplaced-identity')
+    Write-TestFile -Path (Join-Path $misplaced_identity_fixture.SourceRepository 'Feature.bas') -Content "Option Explicit`r`nAttribute VB_Name = `"Feature`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $misplaced_identity_fixture.WorkingDirectory -Arguments @($misplaced_identity_fixture.SearchRoot) -ExpectedPattern '*physical line 1*' -Message 'DIST accepted standard-module identity metadata outside physical line 1.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $misplaced_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Misplaced ModuleIdentity validation mutated a target.'
+
+    $malformed_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-valid-plus-malformed-identity')
+    $valid_plus_malformed_identity = "Attribute VB_Name = `"Feature`"`r`nAttribute VB_Name = Feature`r`n"
+    Write-TestFile -Path (Join-Path $malformed_identity_fixture.SourceRepository 'Feature.bas') -Content $valid_plus_malformed_identity -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $malformed_identity_fixture.WorkingDirectory -Arguments @($malformed_identity_fixture.SearchRoot) -ExpectedPattern '*invalid ModuleIdentity metadata*' -Message 'DIST accepted valid ModuleIdentity metadata followed by a malformed VB_Name-like record.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $malformed_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Malformed ModuleIdentity validation mutated a target.'
+
+    $vertical_tab_kind_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-vertical-tab-kind')
+    Remove-Item -LiteralPath (Join-Path $vertical_tab_kind_fixture.SourceRepository 'Feature.bas') -Force
+    $vertical_tab_kind_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nVerticalTabClass.cls`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $vertical_tab_kind_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $vertical_tab_kind_manifest -Encoding $utf16_le
+    $vertical_tab = [char]0x000B
+    $vertical_tab_class_source = "${vertical_tab}`r`nVERSION 1.0 CLASS`r`nAttribute VB_Name = `"VerticalTabClass`"`r`n"
+    Write-TestFile -Path (Join-Path $vertical_tab_kind_fixture.SourceRepository 'VerticalTabClass.cls') -Content $vertical_tab_class_source -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $vertical_tab_kind_fixture.WorkingDirectory -Arguments @($vertical_tab_kind_fixture.SearchRoot) -ExpectedPattern '*declares source kind*instead of*ClassModule*' -Message 'DIST treated .NET-only vertical-tab whitespace as MS-VBAL whitespace during kind detection.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $vertical_tab_kind_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Vertical-tab source kind validation mutated a target.'
+
+    $misplaced_object_identity_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-misplaced-object-identity')
+    Remove-Item -LiteralPath (Join-Path $misplaced_object_identity_fixture.SourceRepository 'Feature.bas') -Force
+    $misplaced_object_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nMisplacedClass.cls`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $misplaced_object_identity_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $misplaced_object_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $misplaced_object_identity_fixture.SourceRepository 'MisplacedClass.cls') -Content "VERSION 1.0 CLASS`r`nOption Explicit`r`nAttribute VB_Name = `"MisplacedClass`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $misplaced_object_identity_fixture.WorkingDirectory -Arguments @($misplaced_object_identity_fixture.SearchRoot) -ExpectedPattern '*object-module header*' -Message 'DIST accepted object-module identity metadata after the exported header.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $misplaced_object_identity_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Misplaced object ModuleIdentity validation mutated a target.'
+
+    $blank_terminated_object_header_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-blank-terminated-object-header')
+    Remove-Item -LiteralPath (Join-Path $blank_terminated_object_header_fixture.SourceRepository 'Feature.bas') -Force
+    $blank_terminated_object_header_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nBlankHeaderClass.cls`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $blank_terminated_object_header_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $blank_terminated_object_header_manifest -Encoding $utf16_le
+    $blank_terminated_object_header_source = "VERSION 1.0 CLASS`r`nAttribute VB_GlobalNameSpace = False`r`n`r`nAttribute VB_Name = `"BlankHeaderClass`"`r`n"
+    Write-TestFile -Path (Join-Path $blank_terminated_object_header_fixture.SourceRepository 'BlankHeaderClass.cls') -Content $blank_terminated_object_header_source -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $blank_terminated_object_header_fixture.WorkingDirectory -Arguments @($blank_terminated_object_header_fixture.SearchRoot) -ExpectedPattern '*object-module header*' -Message 'DIST accepted object-module identity metadata after a blank line terminated the exported header.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $blank_terminated_object_header_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Blank-terminated object header validation mutated a target.'
+
+    $class_kind_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-class-kind')
+    Remove-Item -LiteralPath (Join-Path $class_kind_fixture.SourceRepository 'Feature.bas') -Force
+    $class_kind_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nFeatureClass.cls`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $class_kind_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $class_kind_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $class_kind_fixture.SourceRepository 'FeatureClass.cls') -Content "Attribute VB_Name = `"FeatureClass`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $class_kind_fixture.WorkingDirectory -Arguments @($class_kind_fixture.SearchRoot) -ExpectedPattern '*declares source kind*instead of*ClassModule*' -Message 'DIST accepted standard-module source metadata under a class filename.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $class_kind_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Class source kind validation mutated a target.'
+
+    $form_kind_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-form-kind')
+    Remove-Item -LiteralPath (Join-Path $form_kind_fixture.SourceRepository 'Feature.bas') -Force
+    $form_kind_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nFeatureForm.frm`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $form_kind_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $form_kind_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $form_kind_fixture.SourceRepository 'FeatureForm.frm') -Content "VERSION 1.0 CLASS`r`nAttribute VB_Name = `"FeatureForm`"`r`n" -Encoding $shift_jis
+    [void](Invoke-ExpectedDistFailure -WorkingDirectory $form_kind_fixture.WorkingDirectory -Arguments @($form_kind_fixture.SearchRoot) -ExpectedPattern '*declares source kind*instead of*FormModule*' -Message 'DIST accepted class source metadata under a form filename.')
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $form_kind_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Form source kind validation mutated a target.'
 
     $locked_source_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'locked-source')
     $locked_manifest_path = Join-Path $locked_source_fixture.SourceRepository 'common-modules-manifest.tsv'
@@ -365,7 +547,7 @@ try {
     Assert-Equal -Expected 0 -Actual $project_link_result.ExitCode -Message "A reparse project child should be a warning skip while later targets continue. Output: $($project_link_result.Output)"
     Assert-Like -Actual $project_link_result.Output -Pattern '*reparse point and was skipped*' -Message 'DIST did not report a reparse project child as a warning skip.'
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $linked_target 'LinkedSentinel.bas') -PathType Leaf) -Message 'DIST followed and changed a reparse project child.'
-    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $project_link_fixture.TargetRepository 'Shared.bas') -PathType Leaf) -Message 'DIST did not continue after a reparse project warning skip.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $project_link_fixture.TargetRepository 'Feature.bas') -PathType Leaf) -Message 'DIST did not continue after a reparse project warning skip.'
 
     $classification_root = Join-Path $temp_root 'candidate-classification'
     $classification_working = Join-Path $classification_root 'wrapper'
@@ -385,24 +567,24 @@ try {
     Assert-Like -Actual $classification_result.Output -Pattern '*ordinary non-reparse*directory*' -Message 'DIST did not report a wrong-type target as a candidate failure.'
     Assert-True -Condition ($classification_result.Output -notlike '*No eligible distribution target*') -Message 'DIST incorrectly added a zero-target error when known candidate failures existed.'
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $case_only_target 'CaseSentinel.bas') -PathType Leaf) -Message 'DIST mutated a case-only candidate failure.'
-    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $valid_classification_target 'Shared.bas') -PathType Leaf) -Message 'DIST did not continue to the valid target after candidate failures.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $valid_classification_target 'Feature.bas') -PathType Leaf) -Message 'DIST did not continue to the valid target after candidate failures.'
 
     $source_exclusion_root = Join-Path $temp_root 'source-exclusion'
     $source_owner = Join-Path $source_exclusion_root 'B_SourceOwner'
     $excluded_source = Join-Path $source_owner 'common_modules_repo'
     $source_exclusion_target = Join-Path $source_exclusion_root 'A_Target\common_modules_repo'
-    Write-ValidPackage -RepositoryPath $excluded_source -ModuleContent "Attribute VB_Name = `"Shared`"`r`n'exclusion source`r`n"
+    Write-ValidPackage -RepositoryPath $excluded_source -ModuleContent "Attribute VB_Name = `"Feature`"`r`n'exclusion source`r`n"
     New-Item -ItemType Directory -Path $source_exclusion_target -Force | Out-Null
     Write-TestFile -Path (Join-Path $source_exclusion_target 'Stale.bas') -Content 'replace' -Encoding $shift_jis
     $source_exclusion_result = Invoke-Dist -WorkingDirectory $source_owner -Arguments @($source_exclusion_root)
     Assert-Equal -Expected 0 -Actual $source_exclusion_result.ExitCode -Message "DIST did not exclude the normalized lexical source path. Output: $($source_exclusion_result.Output)"
-    Assert-True -Condition ((Get-Content -LiteralPath (Join-Path $excluded_source 'Shared.bas') -Raw) -like '*exclusion source*') -Message 'DIST modified the central source while it appeared inside the Search Root.'
-    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $source_exclusion_target 'Shared.bas') -PathType Leaf) -Message 'DIST did not update the non-source candidate.'
+    Assert-True -Condition ((Get-Content -LiteralPath (Join-Path $excluded_source 'Feature.bas') -Raw) -like '*exclusion source*') -Message 'DIST modified the central source while it appeared inside the Search Root.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $source_exclusion_target 'Feature.bas') -PathType Leaf) -Message 'DIST did not update the non-source candidate.'
 
     $unchanged_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'metadata-unchanged')
     Remove-Item -LiteralPath (Join-Path $unchanged_fixture.TargetRepository 'Sentinel.bas') -Force
     Copy-PackageFiles -SourceRepository $unchanged_fixture.SourceRepository -TargetRepository $unchanged_fixture.TargetRepository
-    $unchanged_module_path = Join-Path $unchanged_fixture.TargetRepository 'Shared.bas'
+    $unchanged_module_path = Join-Path $unchanged_fixture.TargetRepository 'Feature.bas'
     $unchanged_time = [System.IO.File]::GetLastWriteTimeUtc($unchanged_module_path)
     $unchanged_lock = [System.IO.File]::Open($unchanged_module_path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
     try {
@@ -426,19 +608,19 @@ try {
         Copy-PackageFiles -SourceRepository $replacement_source -TargetRepository $replacement_target
         $replacement_targets[$project_name] = $replacement_target
     }
-    [System.IO.File]::SetLastWriteTimeUtc((Join-Path $replacement_targets['A_Timestamp'] 'Shared.bas'), [datetime]'2020-01-01T00:00:00Z')
-    Write-TestFile -Path (Join-Path $replacement_targets['B_Length'] 'Shared.bas') -Content 'different length' -Encoding $shift_jis
+    [System.IO.File]::SetLastWriteTimeUtc((Join-Path $replacement_targets['A_Timestamp'] 'Feature.bas'), [datetime]'2020-01-01T00:00:00Z')
+    Write-TestFile -Path (Join-Path $replacement_targets['B_Length'] 'Feature.bas') -Content 'different length' -Encoding $shift_jis
     Write-TestFile -Path (Join-Path $replacement_targets['C_Extra'] 'Extra.bas') -Content 'extra' -Encoding $shift_jis
     New-Item -ItemType Directory -Path (Join-Path $replacement_targets['D_Nested'] 'Nested') -Force | Out-Null
-    Rename-Item -LiteralPath (Join-Path $replacement_targets['E_CaseOnly'] 'Shared.bas') -NewName 'shared.bas'
+    Rename-Item -LiteralPath (Join-Path $replacement_targets['E_CaseOnly'] 'Feature.bas') -NewName 'feature.bas'
     $replacement_result = Invoke-Dist -WorkingDirectory $replacement_working -Arguments @($replacement_search)
     Assert-Equal -Expected 0 -Actual $replacement_result.ExitCode -Message "A metadata or inventory difference did not trigger full replacement. Output: $($replacement_result.Output)"
     foreach ($replacement_target in $replacement_targets.Values) {
         $actual_names = @((Get-ChildItem -LiteralPath $replacement_target -Force).Name)
         Assert-Equal -Expected 2 -Actual $actual_names.Count -Message "DIST did not produce the complete closed package in '$replacement_target'."
-        Assert-True -Condition ($actual_names -ccontains 'Shared.bas') -Message "DIST did not restore ordinal-exact package spelling in '$replacement_target'."
+        Assert-True -Condition ($actual_names -ccontains 'Feature.bas') -Message "DIST did not restore ordinal-exact package spelling in '$replacement_target'."
         Assert-True -Condition ($actual_names -ccontains 'common-modules-manifest.tsv') -Message "DIST did not restore the exact manifest in '$replacement_target'."
-        Assert-Equal -Expected ([System.IO.File]::GetLastWriteTimeUtc((Join-Path $replacement_source 'Shared.bas'))) -Actual ([System.IO.File]::GetLastWriteTimeUtc((Join-Path $replacement_target 'Shared.bas'))) -Message "DIST did not preserve source metadata in '$replacement_target'."
+        Assert-Equal -Expected ([System.IO.File]::GetLastWriteTimeUtc((Join-Path $replacement_source 'Feature.bas'))) -Actual ([System.IO.File]::GetLastWriteTimeUtc((Join-Path $replacement_target 'Feature.bas'))) -Message "DIST did not preserve source metadata in '$replacement_target'."
     }
 
     $form_root = Join-Path $temp_root 'form-package'
@@ -447,14 +629,47 @@ try {
     $form_search = Join-Path $form_root 'search-root'
     $form_target = Join-Path $form_search 'ProjectA\common_modules_repo'
     New-Item -ItemType Directory -Path $form_source, $form_target -Force | Out-Null
-    Write-TestFile -Path (Join-Path $form_source 'common-modules-manifest.tsv') -Content "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nDialog.frm`truntime-baseline`t`t[]`r`n" -Encoding $utf16_le
+    $all_source_kinds_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nBaseModule.bas`truntime-baseline`t`t[]`r`nWideSpace.bas`toptional`t`t[]`r`n共有.bas`toptional`t`t[]`r`nPackageClass.cls`truntime-baseline`t`t[]`r`nDialog.frm`truntime-baseline`t`t[]`r`nStandaloneForm.frm`truntime-baseline`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $form_source 'common-modules-manifest.tsv') -Content $all_source_kinds_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $form_source 'BaseModule.bas') -Content "Attribute VB_Name = `"BaseModule`"`r`n" -Encoding $shift_jis
+    $vba_wide_space = [char]0x3000
+    Write-TestFile -Path (Join-Path $form_source 'WideSpace.bas') -Content "Attribute${vba_wide_space}VB_Name = `"WideSpace`"`r`n" -Encoding $shift_jis
+    Write-TestFile -Path (Join-Path $form_source '共有.bas') -Content "Attribute VB_Name = `"共有`"`r`n' 日本語`r`n" -Encoding $shift_jis
+    Write-TestFile -Path (Join-Path $form_source 'PackageClass.cls') -Content "VERSION 1.0 CLASS`r`nAttribute VB_Name = `"PackageClass`"`r`n" -Encoding $shift_jis
     Write-TestFile -Path (Join-Path $form_source 'Dialog.frm') -Content "VERSION 5.00`r`nAttribute VB_Name = `"Dialog`"`r`n" -Encoding $shift_jis
     Write-TestFile -Path (Join-Path $form_source 'Dialog.frx') -Content 'binary-sidecar-fixture' -Encoding $shift_jis
+    Write-TestFile -Path (Join-Path $form_source 'StandaloneForm.frm') -Content "VERSION 5.00`r`nAttribute VB_Name = `"StandaloneForm`"`r`n" -Encoding $shift_jis
     Write-TestFile -Path (Join-Path $form_target 'Stale.bas') -Content 'stale' -Encoding $shift_jis
     $form_result = Invoke-Dist -WorkingDirectory $form_working -Arguments @($form_search)
     Assert-Equal -Expected 0 -Actual $form_result.ExitCode -Message "DIST did not distribute an optional exact form sidecar. Output: $($form_result.Output)"
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $form_target 'BaseModule.bas') -PathType Leaf) -Message 'DIST rejected a valid standard-module source kind.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $form_target 'WideSpace.bas') -PathType Leaf) -Message 'DIST rejected MS-VBAL U+3000 whitespace in identity metadata.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $form_target '共有.bas') -PathType Leaf) -Message 'DIST rejected a valid Windows-932 Japanese ModuleIdentity.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $form_target 'PackageClass.cls') -PathType Leaf) -Message 'DIST rejected a valid class-module source kind.'
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $form_target 'Dialog.frm') -PathType Leaf) -Message 'DIST did not copy a manifest-listed form.'
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $form_target 'Dialog.frx') -PathType Leaf) -Message 'DIST did not copy the matching optional form sidecar.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $form_target 'StandaloneForm.frm') -PathType Leaf) -Message 'DIST rejected a valid form without an optional sidecar.'
+    Assert-True -Condition (-not (Test-Path -LiteralPath (Join-Path $form_target 'StandaloneForm.frx'))) -Message 'DIST created an absent optional form sidecar.'
+
+    $writer_shared_sidecar_fixture = New-DistFixture -FixtureRoot (Join-Path $temp_root 'source-defect-writer-shared-sidecar')
+    Remove-Item -LiteralPath (Join-Path $writer_shared_sidecar_fixture.SourceRepository 'Feature.bas') -Force
+    $writer_shared_sidecar_manifest = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nDialog.frm`toptional`t`t[]`r`n"
+    Write-TestFile -Path (Join-Path $writer_shared_sidecar_fixture.SourceRepository 'common-modules-manifest.tsv') -Content $writer_shared_sidecar_manifest -Encoding $utf16_le
+    Write-TestFile -Path (Join-Path $writer_shared_sidecar_fixture.SourceRepository 'Dialog.frm') -Content "VERSION 5.00`r`nAttribute VB_Name = `"Dialog`"`r`n" -Encoding $shift_jis
+    $writer_shared_sidecar_path = Join-Path $writer_shared_sidecar_fixture.SourceRepository 'Dialog.frx'
+    Write-TestFile -Path $writer_shared_sidecar_path -Content 'writer-shared-sidecar' -Encoding $shift_jis
+    $writer_shared_sidecar_stream = [System.IO.File]::Open(
+        $writer_shared_sidecar_path,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::Read)
+    try {
+        [void](Invoke-ExpectedDistFailure -WorkingDirectory $writer_shared_sidecar_fixture.WorkingDirectory -Arguments @($writer_shared_sidecar_fixture.SearchRoot) -ExpectedPattern '*unreadable*Dialog.frx*' -Message 'DIST accepted a form sidecar while a writer-shared handle was open.')
+    }
+    finally {
+        $writer_shared_sidecar_stream.Dispose()
+    }
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $writer_shared_sidecar_fixture.TargetRepository 'Sentinel.bas') -PathType Leaf) -Message 'Writer-shared sidecar validation mutated a target.'
 
     $target_reparse_root = Join-Path $temp_root 'target-reparse-safety'
     $target_reparse_working = Join-Path $target_reparse_root 'wrapper'
@@ -479,7 +694,7 @@ try {
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $target_root_backing 'RootLinkSentinel.bas') -PathType Leaf) -Message 'DIST followed and changed a reparse target root.'
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $descendant_target 'TargetSentinel.bas') -PathType Leaf) -Message 'DIST mutated a target containing a descendant reparse entry.'
     Assert-True -Condition (Test-Path -LiteralPath (Join-Path $descendant_backing 'DescendantSentinel.bas') -PathType Leaf) -Message 'DIST followed a descendant reparse entry.'
-    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $valid_reparse_target 'Shared.bas') -PathType Leaf) -Message 'DIST did not continue after target reparse failures.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $valid_reparse_target 'Feature.bas') -PathType Leaf) -Message 'DIST did not continue after target reparse failures.'
 
     $delete_failure_root = Join-Path $temp_root 'delete-failure-continuation'
     $delete_failure_working = Join-Path $delete_failure_root 'wrapper'
@@ -502,7 +717,7 @@ try {
     Assert-Equal -Expected 1 -Actual $delete_failure_result.ExitCode -Message "A target delete failure should produce final failure after later targets are attempted. Output: $($delete_failure_result.Output)"
     Assert-Like -Actual $delete_failure_result.Output -Pattern '*candidate failure while clearing*' -Message 'DIST did not classify a target deletion error as a candidate failure.'
     Assert-True -Condition (Test-Path -LiteralPath $locked_target_file -PathType Leaf) -Message 'The locked target fixture unexpectedly disappeared.'
-    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $later_target 'Shared.bas') -PathType Leaf) -Message 'DIST did not continue after a target deletion failure.'
+    Assert-True -Condition (Test-Path -LiteralPath (Join-Path $later_target 'Feature.bas') -PathType Leaf) -Message 'DIST did not continue after a target deletion failure.'
 
     $zero_fixture_root = Join-Path $temp_root 'zero-target'
     $zero_working = Join-Path $zero_fixture_root 'wrapper'

@@ -2,6 +2,7 @@
 $InformationPreference = 'Continue'
 
 $validator_path = Join-Path $PSScriptRoot 'validate_common_modules_manifest_main.ps1'
+$distribution_validator_path = Join-Path $PSScriptRoot 'dist_common_mods_repo_main.ps1'
 $repo_root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 Import-Module (Join-Path $PSScriptRoot 'VbaDevTool.psm1') -Force
 
@@ -89,6 +90,206 @@ function Assert-ManifestReadFails {
     throw "Expected manifest reader to reject '$ManifestPath'."
 }
 
+function Read-GzipUtf8Text {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $file_stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $gzip_stream = New-Object System.IO.Compression.GZipStream(
+            $file_stream,
+            [System.IO.Compression.CompressionMode]::Decompress,
+            $true
+        )
+        try {
+            $reader = New-Object System.IO.StreamReader($gzip_stream)
+            try {
+                return $reader.ReadToEnd()
+            }
+            finally {
+                $reader.Dispose()
+            }
+        }
+        finally {
+            $gzip_stream.Dispose()
+        }
+    }
+    finally {
+        $file_stream.Dispose()
+    }
+}
+
+function Invoke-SharedPackageFixture {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$FixtureCase,
+
+        [Parameter(Mandatory = $true)]
+        [int]$CaseIndex,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FixtureRoot
+    )
+
+    $case_root = Join-Path $FixtureRoot ("package-{0:D2}" -f $CaseIndex)
+    $source_repository = Join-Path $case_root 'common_modules_repo'
+    $search_root = Join-Path $case_root 'search-root'
+    $target_repository = Join-Path (Join-Path $search_root 'consumer') 'common_modules_repo'
+    New-Item -ItemType Directory -Path $source_repository -Force | Out-Null
+    New-Item -ItemType Directory -Path $target_repository -Force | Out-Null
+
+    $source_prefix = [System.IO.Path]::GetFullPath($source_repository) + [System.IO.Path]::DirectorySeparatorChar
+    foreach ($entry in $FixtureCase.entries) {
+        $relative_path = ([string]$entry.path).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+        $entry_path = [System.IO.Path]::GetFullPath((Join-Path $source_repository $relative_path))
+        if (-not $entry_path.StartsWith($source_prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Shared package fixture '$($FixtureCase.name)' escapes its package root: $($entry.path)"
+        }
+
+        if ([string]::Equals($entry.kind, 'directory', [System.StringComparison]::Ordinal)) {
+            New-Item -ItemType Directory -Path $entry_path -Force | Out-Null
+            continue
+        }
+        if (-not [string]::Equals($entry.kind, 'file', [System.StringComparison]::Ordinal)) {
+            throw "Shared package fixture '$($FixtureCase.name)' has unsupported entry kind '$($entry.kind)'."
+        }
+
+        $entry_parent = [System.IO.Path]::GetDirectoryName($entry_path)
+        New-Item -ItemType Directory -Path $entry_parent -Force | Out-Null
+        [System.IO.File]::WriteAllBytes(
+            $entry_path,
+            [System.Convert]::FromBase64String([string]$entry.contentBase64)
+        )
+    }
+
+    $previous_error_action_preference = $ErrorActionPreference
+    try {
+        Push-Location -LiteralPath $case_root
+        $ErrorActionPreference = 'Continue'
+        $output = & powershell `
+            -NoProfile `
+            -ExecutionPolicy Bypass `
+            -File $distribution_validator_path `
+            $search_root 2>&1
+        $exit_code = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previous_error_action_preference
+        Pop-Location
+    }
+
+    $expected_exit_code = if ($FixtureCase.valid) { 0 } else { 1 }
+    if ($exit_code -ne $expected_exit_code) {
+        $output | ForEach-Object { Write-Host $_ }
+        throw "Shared package fixture '$($FixtureCase.name)' expected exit code $expected_exit_code but got $exit_code."
+    }
+
+    $target_inventory = @(Get-ChildItem -LiteralPath $target_repository -Force)
+    if (-not $FixtureCase.valid) {
+        if ($target_inventory.Count -ne 0) {
+            throw "Shared invalid package fixture '$($FixtureCase.name)' mutated its distribution target."
+        }
+        return
+    }
+
+    $source_inventory = @(Get-ChildItem -LiteralPath $source_repository -Force)
+    if ($target_inventory.Count -ne $source_inventory.Count) {
+        throw "Shared valid package fixture '$($FixtureCase.name)' did not distribute its complete package."
+    }
+    foreach ($source_item in $source_inventory) {
+        $target_path = Join-Path $target_repository $source_item.Name
+        if (-not (Test-Path -LiteralPath $target_path -PathType Leaf) -or
+            -not (Test-FileContentEqual -LeftPath $source_item.FullName -RightPath $target_path)) {
+            throw "Shared valid package fixture '$($FixtureCase.name)' distributed different bytes for '$($source_item.Name)'."
+        }
+    }
+}
+
+function Invoke-SharedManifestFixtureTests {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot
+    )
+
+    $fixture_path = Join-Path $RepositoryRoot 'fixtures\common-modules-manifest\v1\fixture-set.json.gz'
+    $expected_hash = '0cc8019d254a79753d3fc345aa98b7f4709d80e4d367168cc72cb0d24a75e402'
+    $actual_hash = (Get-FileHash -LiteralPath $fixture_path -Algorithm SHA256).Hash.ToLowerInvariant()
+    if (-not [string]::Equals($actual_hash, $expected_hash, [System.StringComparison]::Ordinal)) {
+        throw "Shared CommonModules manifest fixture hash changed: $actual_hash"
+    }
+
+    $fixture_set = ConvertFrom-Json -InputObject (Read-GzipUtf8Text -Path $fixture_path)
+    if (-not [string]::Equals($fixture_set.schemaVersion, '1.1', [System.StringComparison]::Ordinal)) {
+        throw "Unsupported shared CommonModules manifest fixture schema '$($fixture_set.schemaVersion)'."
+    }
+
+    $fixture_root = Join-Path ([System.IO.Path]::GetTempPath()) ('common-modules-shared-fixtures-' + [System.Guid]::NewGuid().ToString('N'))
+    try {
+        New-Item -ItemType Directory -Path $fixture_root -Force | Out-Null
+        for ($case_index = 0; $case_index -lt $fixture_set.cases.Count; $case_index++) {
+            $fixture_case = $fixture_set.cases[$case_index]
+            $manifest_path = Join-Path $fixture_root ("case-{0:D2}.tsv" -f $case_index)
+            [System.IO.File]::WriteAllBytes(
+                $manifest_path,
+                [System.Convert]::FromBase64String($fixture_case.manifestBase64)
+            )
+
+            if (-not $fixture_case.valid) {
+                try {
+                    [void](Read-CommonModulesManifest -ManifestPath $manifest_path)
+                }
+                catch {
+                    continue
+                }
+
+                throw "Shared fixture '$($fixture_case.name)' was expected to be rejected."
+            }
+
+            $manifest = Read-CommonModulesManifest -ManifestPath $manifest_path
+            $actual_records = @($manifest.Records)
+            $expected_records = @($fixture_case.expectedRecords)
+            if ($actual_records.Count -ne $expected_records.Count) {
+                throw "Shared fixture '$($fixture_case.name)' expected $($expected_records.Count) records but got $($actual_records.Count)."
+            }
+
+            for ($record_index = 0; $record_index -lt $expected_records.Count; $record_index++) {
+                $expected_record = $expected_records[$record_index]
+                $actual_record = $actual_records[$record_index]
+                if (-not [string]::Equals($actual_record.ModuleFile, $expected_record.moduleFile, [System.StringComparison]::Ordinal)) {
+                    throw "Shared fixture '$($fixture_case.name)' has a ModuleFile mismatch at record $record_index."
+                }
+                if (-not [string]::Equals($actual_record.Categories, $expected_record.categories, [System.StringComparison]::Ordinal)) {
+                    throw "Shared fixture '$($fixture_case.name)' has a Categories mismatch at record $record_index."
+                }
+                Assert-StringSequence `
+                    -Actual @($actual_record.Dependencies) `
+                    -Expected @($expected_record.dependencies) `
+                    -Context "Shared fixture '$($fixture_case.name)' dependencies at record $record_index"
+                Assert-StringSequence `
+                    -Actual @($actual_record.RequiredReferences) `
+                    -Expected @($expected_record.requiredReferences) `
+                    -Context "Shared fixture '$($fixture_case.name)' references at record $record_index"
+            }
+        }
+
+        for ($case_index = 0; $case_index -lt $fixture_set.packageCases.Count; $case_index++) {
+            Invoke-SharedPackageFixture `
+                -FixtureCase $fixture_set.packageCases[$case_index] `
+                -CaseIndex $case_index `
+                -FixtureRoot $fixture_root
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $fixture_root) {
+            Remove-Item -LiteralPath $fixture_root -Recurse -Force
+        }
+    }
+}
+
+Invoke-SharedManifestFixtureTests -RepositoryRoot $repo_root
+
 $source_modules_directory = Join-Path (Join-Path (Join-Path $repo_root 'CommonModules') 'src') 'CommonModules'
 $source_manifest_path = Join-Path $source_modules_directory 'common-modules-manifest.tsv'
 $distributed_manifest_path = Join-Path (Join-Path $repo_root 'common_modules_repo') 'common-modules-manifest.tsv'
@@ -107,6 +308,7 @@ try {
     Invoke-ManifestValidator -ManifestPath $minimal_manifest -ModulesDirectory $tracer_modules
 
     $json_module_files = @(
+        'ApplicationScreenUpdateManager.cls',
         'ArrayObject.cls',
         'Counter.cls',
         'CounterSet.cls',
@@ -122,6 +324,7 @@ try {
     $json_manifest = Join-Path $tracer_root 'required-references-json.tsv'
     $json_lines = @(
         "ModuleFile`tCategories`tDependencies`tRequiredReferences",
+        "ApplicationScreenUpdateManager.cls`toptional`t`t[`"Emoji \uD83D\uDE00`"]",
         "ArrayObject.cls`toptional`t`t[]",
         "Counter.cls`toptional`t`t[`"Single Reference`"]",
         "CounterSet.cls`toptional`t`t[`"First Reference`",`"Second Reference`"]",
@@ -134,6 +337,8 @@ try {
     Invoke-ManifestValidator -ManifestPath $json_manifest -ModulesDirectory $tracer_modules
 
     $json_records = (Read-CommonModulesManifest -ManifestPath $json_manifest).RecordsByModule
+    $paired_surrogate_reference = 'Emoji ' + [char]0xd83d + [char]0xde00
+    Assert-StringSequence -Actual @($json_records['ApplicationScreenUpdateManager.cls'].RequiredReferences) -Expected @($paired_surrogate_reference) -Context 'Paired-surrogate RequiredReferences'
     Assert-StringSequence -Actual @($json_records['ArrayObject.cls'].RequiredReferences) -Expected @() -Context 'Empty RequiredReferences'
     Assert-StringSequence -Actual @($json_records['Counter.cls'].RequiredReferences) -Expected @('Single Reference') -Context 'Single RequiredReferences'
     Assert-StringSequence -Actual @($json_records['CounterSet.cls'].RequiredReferences) -Expected @('First Reference', 'Second Reference') -Context 'Multiple RequiredReferences'
@@ -367,6 +572,14 @@ try {
     $commented_json_text = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nLib_Common.bas`truntime-baseline`t`t[/*invalid*/`"Reference`"]`r`n"
     [System.IO.File]::WriteAllText($commented_json_manifest, $commented_json_text, $utf16_le)
     Assert-ManifestReadFails -ManifestPath $commented_json_manifest -ExpectedMessage 'malformed RequiredReferences JSON'
+
+    $unpaired_surrogate_escapes = @('\uD800', '\uDC00')
+    for ($surrogate_index = 0; $surrogate_index -lt $unpaired_surrogate_escapes.Count; $surrogate_index++) {
+        $unpaired_surrogate_manifest = Join-Path $temp_root "unpaired-surrogate-$surrogate_index.tsv"
+        $unpaired_surrogate_text = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nLib_Common.bas`truntime-baseline`t`t[`"$($unpaired_surrogate_escapes[$surrogate_index])`"]`r`n"
+        [System.IO.File]::WriteAllText($unpaired_surrogate_manifest, $unpaired_surrogate_text, $utf16_le)
+        Assert-ManifestReadFails -ManifestPath $unpaired_surrogate_manifest -ExpectedMessage 'malformed RequiredReferences JSON'
+    }
 
     $empty_reference_manifest = Join-Path $temp_root 'empty-reference.tsv'
     $empty_reference_text = "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nLib_Common.bas`truntime-baseline`t`t[`"`"]`r`n"

@@ -42,7 +42,7 @@ An Excel VBA tool that has its own business-specific `.xlsm` and source set, suc
 _Avoid_: CommonModules, common module
 
 **CommonModulesRepository**:
-A generated closed flat package directory named `common_modules_repo`. It contains the canonical manifest, exactly one root-level source unit for every manifest row, and only each listed form's optional matching `.frx`; every other entry is outside the package. COLLECT writes this output, while mandatory baseline and fallback candidates come only from `CommonModules Authoring Source Set`.
+A generated closed flat package directory named `common_modules_repo`. It contains the canonical manifest, exactly one root-level source unit for every manifest row, and only each listed form's optional matching `.frx`; every other entry is outside the package. A distributable source unit is strict Windows-932 text whose authoritative exact-case `VB_Name` is non-reserved, no longer than 31 Unicode code points, and matches `^\p{L}[\p{L}\p{Nd}_]*$`; its exported kind matches `.bas`, `.cls`, or `.frm`. COLLECT writes this output, while mandatory baseline and fallback candidates come only from `CommonModules Authoring Source Set`.
 _Avoid_: authoring source set, transaction workspace, package cache
 
 **Collection Search Root**:

@@ -501,25 +501,25 @@ try {
     New-Item -ItemType Directory -Path $dist_non_target -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $tools_root 'VbaDevTool.psm1') -Destination $dist_tools_root -Force
     Copy-Item -LiteralPath (Join-Path $tools_root 'dist_common_mods_repo_main.ps1') -Destination $dist_tools_root -Force
-    Write-TestFileSjis -Path (Join-Path $dist_source 'Shared.bas') -Content "Attribute VB_Name = `"Shared`"`r`n'distributed`r`n"
-    Write-TestFileUtf16Le -Path (Join-Path $dist_source 'common-modules-manifest.tsv') -Content "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nShared.bas`truntime-baseline`t`t[]`r`n"
+    Write-TestFileSjis -Path (Join-Path $dist_source 'Feature.bas') -Content "Attribute VB_Name = `"Feature`"`r`n'distributed`r`n"
+    Write-TestFileUtf16Le -Path (Join-Path $dist_source 'common-modules-manifest.tsv') -Content "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nFeature.bas`truntime-baseline`t`t[]`r`n"
     Write-TestFileSjis -Path (Join-Path $dist_target_a 'Stale.bas') -Content "Attribute VB_Name = `"Stale`"`r`n"
     foreach ($source_file in Get-ChildItem -LiteralPath $dist_source -File -Force) {
         Copy-Item -LiteralPath $source_file.FullName -Destination (Join-Path $dist_target_b $source_file.Name) -Force
     }
-    $unchanged_target_time = [System.IO.File]::GetLastWriteTimeUtc((Join-Path $dist_target_b 'Shared.bas'))
+    $unchanged_target_time = [System.IO.File]::GetLastWriteTimeUtc((Join-Path $dist_target_b 'Feature.bas'))
 
     $dist_result = Invoke-TestDistCommand -ScriptPath (Join-Path $dist_tools_root 'dist_common_mods_repo_main.ps1') -SearchRoot $dist_workspace_root -InvocationWorkingDirectory $dist_repository_root
     Test-Equal -Expected 0 -Actual $dist_result.ExitCode -Message "DIST_COMMON_MODS_REPO failed its one-argument smoke test. Output: $($dist_result.Output)"
     foreach ($dist_target in @($dist_target_a, $dist_target_b)) {
-        Test-Equal -Expected (Get-Content -LiteralPath (Join-Path $dist_source 'Shared.bas') -Raw) -Actual (Get-Content -LiteralPath (Join-Path $dist_target 'Shared.bas') -Raw) -Message "DIST_COMMON_MODS_REPO did not copy Shared.bas to '$dist_target'."
+        Test-Equal -Expected (Get-Content -LiteralPath (Join-Path $dist_source 'Feature.bas') -Raw) -Actual (Get-Content -LiteralPath (Join-Path $dist_target 'Feature.bas') -Raw) -Message "DIST_COMMON_MODS_REPO did not copy Feature.bas to '$dist_target'."
         Test-True -Condition (Test-Path -LiteralPath (Join-Path $dist_target 'common-modules-manifest.tsv') -PathType Leaf) -Message "DIST_COMMON_MODS_REPO did not copy the manifest to '$dist_target'."
         Test-True -Condition (Test-FileContentEqual -LeftPath (Join-Path $dist_source 'common-modules-manifest.tsv') -RightPath (Join-Path $dist_target 'common-modules-manifest.tsv')) -Message "DIST_COMMON_MODS_REPO did not preserve manifest bytes in '$dist_target'."
         Test-True -Condition (-not (Test-Path -LiteralPath (Join-Path $dist_target 'Stale.bas'))) -Message "DIST_COMMON_MODS_REPO did not replace stale contents in '$dist_target'."
     }
-    Test-Equal -Expected $unchanged_target_time -Actual ([System.IO.File]::GetLastWriteTimeUtc((Join-Path $dist_target_b 'Shared.bas'))) -Message 'DIST_COMMON_MODS_REPO rewrote an unchanged target file.'
+    Test-Equal -Expected $unchanged_target_time -Actual ([System.IO.File]::GetLastWriteTimeUtc((Join-Path $dist_target_b 'Feature.bas'))) -Message 'DIST_COMMON_MODS_REPO rewrote an unchanged target file.'
     Test-True -Condition (-not (Test-Path -LiteralPath (Join-Path $dist_non_target 'common_modules_repo'))) -Message 'DIST_COMMON_MODS_REPO created a target for a project that had not opted in.'
-    Test-Equal -Expected "Attribute VB_Name = `"Shared`"`r`n'distributed`r`n" -Actual (Get-Content -LiteralPath (Join-Path $dist_source 'Shared.bas') -Raw) -Message 'DIST_COMMON_MODS_REPO modified its source repository.'
+    Test-Equal -Expected "Attribute VB_Name = `"Feature`"`r`n'distributed`r`n" -Actual (Get-Content -LiteralPath (Join-Path $dist_source 'Feature.bas') -Raw) -Message 'DIST_COMMON_MODS_REPO modified its source repository.'
 
     $dist_no_target_root = Join-Path $temp_root 'dist-no-target'
     $dist_no_target_owner = Join-Path $dist_no_target_root 'xls-common-modules'
@@ -529,8 +529,8 @@ try {
     New-Item -ItemType Directory -Path $dist_no_target_tools, $dist_no_target_source, $dist_no_target_search -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $tools_root 'VbaDevTool.psm1') -Destination $dist_no_target_tools -Force
     Copy-Item -LiteralPath (Join-Path $tools_root 'dist_common_mods_repo_main.ps1') -Destination $dist_no_target_tools -Force
-    Write-TestFileSjis -Path (Join-Path $dist_no_target_source 'Shared.bas') -Content "Attribute VB_Name = `"Shared`"`r`n"
-    Write-TestFileUtf16Le -Path (Join-Path $dist_no_target_source 'common-modules-manifest.tsv') -Content "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nShared.bas`truntime-baseline`t`t[]`r`n"
+    Write-TestFileSjis -Path (Join-Path $dist_no_target_source 'Feature.bas') -Content "Attribute VB_Name = `"Feature`"`r`n"
+    Write-TestFileUtf16Le -Path (Join-Path $dist_no_target_source 'common-modules-manifest.tsv') -Content "ModuleFile`tCategories`tDependencies`tRequiredReferences`r`nFeature.bas`truntime-baseline`t`t[]`r`n"
     $dist_no_target_result = Invoke-TestDistCommand -ScriptPath (Join-Path $dist_no_target_tools 'dist_common_mods_repo_main.ps1') -SearchRoot $dist_no_target_search -InvocationWorkingDirectory $dist_no_target_owner
     Test-Equal -Expected 1 -Actual $dist_no_target_result.ExitCode -Message 'DIST_COMMON_MODS_REPO should fail when no target or candidate failure is discovered.'
     Test-True -Condition ($dist_no_target_result.Output -like '*No eligible distribution target*') -Message "DIST_COMMON_MODS_REPO returned an unexpected zero-target error: $($dist_no_target_result.Output)"
