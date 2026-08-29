@@ -4,6 +4,8 @@
 
 `COLLECT_COMMON_MODS` accepts exactly one explicit Collection Search Root and recursively discovers the document source sets declared by `vba-project.json` files beneath it. The unique discovered source-set root that directly owns `common-modules-manifest.tsv` is the CommonModules authoring authority. For each listed module, COLLECT selects the newest eligible source unit by filesystem metadata. A `common_modules_repo` remains generated output and is never a collection source.
 
+`DIST_COMMON_MODS_REPO` accepts exactly one independent Distribution Search Root. It validates the closed package in the invocation-start working directory's exact direct child `common_modules_repo`, then distributes it only to opted-in repositories among the Search Root's immediate child project directories. Target discovery is non-recursive and does not infer or create opt-in directories.
+
 The manifest is a strict four-column UTF-16LE-with-BOM contract for each module's primary role and optional `public-udf` modifier, direct CommonModule dependencies, and direct external VBA references. COLLECT validates it without normalization or source-code inference and preserves the canonical bytes in the generated package.
 
 ## Features
@@ -121,7 +123,7 @@ Actual tests substitute dependencies such as `WorksheetServiceTestDouble`, `Work
 
 ## Tooling
 
-Use the `.bat` files or the `.lnk` files placed in individual tool folders when those entry points exist. The usual operation is to drag and drop the target folder, source set directory, or `.xlsm` onto the `.bat` / `.lnk`. When running from the command line, call the `.bat` files. COLLECT requires exactly one Collection Search Root argument; a relative root is resolved against the invocation-start working directory.
+Use the `.bat` files or the `.lnk` files placed in individual tool folders when those entry points exist. The usual operation is to drag and drop the target folder, source set directory, or `.xlsm` onto the `.bat` / `.lnk`. When running from the command line, call the `.bat` files. COLLECT and DIST each require exactly one Search Root argument; a relative root is resolved against the invocation-start working directory. Their roots are independent: Collection Search Root selects source sets for collection, while Distribution Search Root selects immediate project directories for distribution.
 
 | Purpose | Recommended entry point | Target example |
 | --- | --- | --- |
@@ -130,13 +132,17 @@ Use the `.bat` files or the `.lnk` files placed in individual tool folders when 
 | Generate the API reference for a source set | `tools/GEN_DOC.BAT` | `xls-web-tools/SampleWebTool/src/SampleWebTool` |
 | Update CommonModules and build all vba-dev documents under a folder | `tools/UPDATE_COMMON_MODS.BAT` | `xls-web-tools` |
 | Collect a closed package from all `vba-project.json` source sets below a Search Root into the current directory's `common_modules_repo` | `tools/COLLECT_COMMON_MODS.BAT` | `..` from the `xls-common-modules` root |
-| Distribute to each individual tool repository's `common_modules_repo` | `tools/DIST_COMMON_MODS_REPO.BAT` | `xls-common-modules/common_modules_repo` |
+| Distribute the current directory's closed package to opted-in immediate child repositories below a Distribution Search Root | `tools/DIST_COMMON_MODS_REPO.BAT` | `..` from the `xls-common-modules` root |
 
 `COLLECT_COMMON_MODS` validates every discovered project, document source path, source-set inventory, and the strict canonical manifest before mutating output. It does not descend into reparse child directories or generated and administrative trees. Module selection and the `UNCHANGED` package check use exact inventory names, `LastWriteTimeUtc`, and `Length`, never source contents or hashes. A form candidate includes its optional same-directory `.frx`; ambiguous newest metadata falls back with a warning to the mandatory CommonModules authoring candidate.
 
 If the existing package does not match that metadata exactly, COLLECT clears it and sequentially copies only the validated manifest, one selected source unit per manifest row, and each selected form's matching `.frx`. Stale, nested, and otherwise unexpected entries are removed. Copy or deletion failure exits with code `1` and may leave a partial package; rerun after correcting the cause. A matching package is reported as `UNCHANGED` without writes.
 
-`DIST_COMMON_MODS_REPO` is intentionally a small PowerShell copy workflow. It uses the supplied `common_modules_repo` as its source, finds existing `common_modules_repo` directories directly under the workspace's immediate project directories, excludes the source itself, leaves byte-identical flat targets unchanged, and replaces every other target's contents in order. It does not create opt-in targets, infer them from project manifests, or provide a transaction or rollback layer; if a later copy fails, inspect the reported target and rerun the command after correcting the problem.
+`DIST_COMMON_MODS_REPO` is intentionally a small PowerShell copy workflow. Its source is fixed to the ordinal-exact ordinary directory `common_modules_repo` directly below the invocation-start working directory; source override and Search Root inference are not supported. DIST validates that source as the strict closed flat package defined by its canonical manifest, records its exact filenames, `LastWriteTimeUtc`, and `Length` once, and never uses file contents or hashes for package identity.
+
+DIST fixes a deterministic ordinal path-ordered candidate set from the Distribution Search Root's immediate child project directories. An exact ordinary `common_modules_repo` directory is the only opt-in; DIST does not recurse, follow reparse project children, infer opt-in from manifests, create targets, or physically deduplicate aliases. A target with the exact source inventory and metadata is reported as `UNCHANGED`. Every other eligible target is cleared and receives the complete source package sequentially, with stale files and directories removed.
+
+An invalid source or unreadable Search Root is a global failure. An invalid or unsafe target, or a target-local deletion or copy error, is a candidate failure: later candidates are still attempted and the final exit code is `1`. Warning-only skips do not fail the run, although a run with no eligible target remains an error. DIST does not provide staging, a transaction, rollback, retry, a package lock, or post-copy verification; a failed target may be partial, so correct the reported cause and rerun the command.
 
 `GEN_DOC.BAT` treats the dropped path as a source directory and reads only direct `.bas`, `.cls`, and `.frm` files. For `<owner>/src/<target>`, it writes HTML to `<owner>/docs/<target>/api-reference` and creates `<owner>/docs/<target>/api-reference.zip`; the Doxygen project name is `<target>`. For `<owner>/modules`, `<owner>/<name>`, or `<owner>/src`, it writes to `<owner>/docs/api-reference` and creates `<owner>/docs/api-reference.zip`; `<owner>/src` emits a warning because `src` is normally a container directory.
 
@@ -160,6 +166,9 @@ The following examples are run from the `xls-common-modules` root.
 # Collect from every vba-dev source set below the workspace root.
 # Output is .\common_modules_repo because the current directory is xls-common-modules.
 .\tools\COLLECT_COMMON_MODS.BAT ..
+
+# Distribute .\common_modules_repo to opted-in immediate child repositories below the workspace root.
+.\tools\DIST_COMMON_MODS_REPO.BAT ..
 
 # Check VBA source formatting
 powershell -ExecutionPolicy bypass -NoLogo -NonInteractive -File .\tools\format_vba_source_main.ps1 ..\xls-web-tools\SampleWebTool\src\SampleWebTool -Recurse -Check

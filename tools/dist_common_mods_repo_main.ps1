@@ -1,239 +1,512 @@
 ﻿$ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
+$WarningPreference = 'Continue'
 
-$current_dir = (Get-Location).ProviderPath
-Set-Location $PSScriptRoot
+$invocation_working_directory = (Get-Location).ProviderPath
 
 Import-Module (Join-Path $PSScriptRoot 'VbaDevTool.psm1') -Force
 
-$bat_dir = $args[0]
-$bat_file = $args[1]
-$bat_path = $args[2]
-$arg_dir = $args[3]
-$arg_file = $args[4]
-$arg_path = $args[5]
-
 Set-Variable -Name COMMON_MODULES_REPO_DIR_NAME -Value 'common_modules_repo' -Option Constant
+Set-Variable -Name COMMON_MODULES_MANIFEST_FILE_NAME -Value 'common-modules-manifest.tsv' -Option Constant
 
-function Get-DirectoryInfo {
+function Test-ReparsePoint {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Path,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Description
+        [System.IO.FileSystemInfo]$Item
     )
 
-    if ([string]::IsNullOrWhiteSpace($Path)) {
-        throw "$Description is empty."
+    return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+}
+
+function Get-NormalizedLexicalPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $full_path = [System.IO.Path]::GetFullPath($Path)
+    $root_path = [System.IO.Path]::GetPathRoot($full_path)
+    while ($full_path.Length -gt $root_path.Length -and
+        ($full_path.EndsWith([System.IO.Path]::DirectorySeparatorChar) -or
+            $full_path.EndsWith([System.IO.Path]::AltDirectorySeparatorChar))) {
+        $full_path = $full_path.Substring(0, $full_path.Length - 1)
     }
 
-    $resolved_path = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
-    $dir_info = Get-Item -LiteralPath $resolved_path -ErrorAction Stop
+    return $full_path
+}
 
-    if (-not $dir_info.PSIsContainer) {
-        throw "$Description is not a directory: $resolved_path"
+function Get-OrdinalSortedItems {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Items,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PropertyName
+    )
+
+    $items_by_value = New-Object 'System.Collections.Generic.Dictionary[string, object]' ([System.StringComparer]::Ordinal)
+    foreach ($item in $Items) {
+        $value = [string]$item.$PropertyName
+        if ($items_by_value.ContainsKey($value)) {
+            throw "Cannot order duplicate '$PropertyName' value: $value"
+        }
+        $items_by_value.Add($value, $item)
     }
 
-    return $dir_info
+    [string[]]$ordered_values = @($items_by_value.Keys)
+    [Array]::Sort($ordered_values, [System.StringComparer]::Ordinal)
+    foreach ($value in $ordered_values) {
+        $items_by_value[$value]
+    }
 }
 
-function Test-DirectoryContainsPath {
+function Resolve-DistributionSearchRoot {
     param(
         [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$ParentDirectory,
+        [AllowEmptyCollection()]
+        [object[]]$Arguments,
 
         [Parameter(Mandatory = $true)]
-        [string]$ChildPath
+        [string]$InvocationWorkingDirectory
     )
 
-    $parent_path = $ParentDirectory.FullName.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
-    $child_full_name = (Get-Item -LiteralPath $ChildPath -ErrorAction Stop).FullName
+    if ($Arguments.Count -ne 1) {
+        throw 'DIST requires exactly one Distribution Search Root argument.'
+    }
 
-    return $child_full_name.StartsWith($parent_path, [System.StringComparison]::OrdinalIgnoreCase)
-}
+    $argument_path = [string]$Arguments[0]
+    if ([string]::IsNullOrWhiteSpace($argument_path)) {
+        throw 'Distribution Search Root is empty.'
+    }
 
-function Test-SamePath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$LeftPath,
-
-        [Parameter(Mandatory = $true)]
-        [string]$RightPath
-    )
-
-    $left_full_name = (Get-Item -LiteralPath $LeftPath -ErrorAction Stop).FullName.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-    $right_full_name = (Get-Item -LiteralPath $RightPath -ErrorAction Stop).FullName.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
-
-    return [string]::Equals($left_full_name, $right_full_name, [System.StringComparison]::OrdinalIgnoreCase)
-}
-
-function Get-SourceDirectory {
-    # Keep DIST as a direct PowerShell mirror of one common_modules_repo.
-    if ([string]::IsNullOrWhiteSpace($arg_path)) {
-        $source_path = Join-Path $current_dir $COMMON_MODULES_REPO_DIR_NAME
-        $source_directory = Get-DirectoryInfo -Path $source_path -Description 'source common_modules_repo'
+    if ([System.IO.Path]::IsPathRooted($argument_path)) {
+        $candidate_path = $argument_path
     }
     else {
-        $source_directory = Get-DirectoryInfo -Path $arg_path -Description 'source directory'
+        $candidate_path = Join-Path $InvocationWorkingDirectory $argument_path
     }
 
-    if (-not [string]::Equals($source_directory.Name, $COMMON_MODULES_REPO_DIR_NAME, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Source directory must be named '$COMMON_MODULES_REPO_DIR_NAME': $($source_directory.FullName)"
+    $resolved_path = (Resolve-Path -LiteralPath $candidate_path -ErrorAction Stop).ProviderPath
+    $search_root = Get-Item -LiteralPath $resolved_path -Force -ErrorAction Stop
+    if (-not $search_root.PSIsContainer) {
+        throw "Distribution Search Root must be a directory: $resolved_path"
     }
 
-    return $source_directory
+    return $search_root
 }
 
-function Get-ParentDirectoryInfo {
+function Get-WrapperSourceRepository {
     param(
         [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$Directory,
+        [string]$InvocationWorkingDirectory
+    )
+
+    $parent_inventory = @(Get-ChildItem -LiteralPath $InvocationWorkingDirectory -Force -ErrorAction Stop)
+    $matches = @($parent_inventory | Where-Object {
+        [string]::Equals($_.Name, $COMMON_MODULES_REPO_DIR_NAME, [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($matches.Count -eq 0) {
+        throw "Source $COMMON_MODULES_REPO_DIR_NAME was not found directly under the invocation working directory: $InvocationWorkingDirectory"
+    }
+    if ($matches.Count -ne 1) {
+        throw "Source has multiple case-insensitive '$COMMON_MODULES_REPO_DIR_NAME' matches directly under the invocation working directory: $InvocationWorkingDirectory"
+    }
+
+    $source_repository = $matches[0]
+    if (-not [string]::Equals($source_repository.Name, $COMMON_MODULES_REPO_DIR_NAME, [System.StringComparison]::Ordinal)) {
+        throw "Source repository must use the ordinal-exact '$COMMON_MODULES_REPO_DIR_NAME' name: $($source_repository.FullName)"
+    }
+    if (-not $source_repository.PSIsContainer -or $source_repository -isnot [System.IO.DirectoryInfo] -or (Test-ReparsePoint -Item $source_repository)) {
+        throw "Source repository must be an ordinary non-reparse directory: $($source_repository.FullName)"
+    }
+
+    return $source_repository
+}
+
+function Get-ExactPackageFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Inventory,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SourceRepositoryPath,
+
+        [switch]$AllowAbsent
+    )
+
+    $matches = @($Inventory | Where-Object {
+        [string]::Equals($_.Name, $ExpectedName, [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($matches.Count -eq 0) {
+        if ($AllowAbsent) {
+            return $null
+        }
+        throw "Source package entry was not found in '$SourceRepositoryPath': $ExpectedName"
+    }
+    if ($matches.Count -ne 1) {
+        throw "Source package has multiple case-insensitive '$ExpectedName' matches in '$SourceRepositoryPath'."
+    }
+
+    $match = $matches[0]
+    if (-not [string]::Equals($match.Name, $ExpectedName, [System.StringComparison]::Ordinal)) {
+        throw "Source package entry must use the ordinal-exact '$ExpectedName' name: $($match.FullName)"
+    }
+    if ($match.PSIsContainer -or $match -isnot [System.IO.FileInfo] -or (Test-ReparsePoint -Item $match)) {
+        throw "Source package entry must be an ordinary non-reparse file: $($match.FullName)"
+    }
+
+    return $match
+}
+
+function Assert-FileReadable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$File,
 
         [Parameter(Mandatory = $true)]
         [string]$Description
     )
 
-    $parent_path = Split-Path -Parent $Directory.FullName
-    return Get-DirectoryInfo -Path $parent_path -Description $Description
-}
-
-function Get-DistributionSearchRoot {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$SourceDirectory
-    )
-
-    $source_parent = Get-ParentDirectoryInfo -Directory $SourceDirectory -Description 'parent directory of the source directory'
-    return Get-ParentDirectoryInfo -Directory $source_parent -Description 'distribution target search root'
-}
-
-function Assert-CommonModulesRepoPath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$ProjectRoot,
-
-        [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$CommonModulesRepoDirectory
-    )
-
-    if ($CommonModulesRepoDirectory.Name -ne $COMMON_MODULES_REPO_DIR_NAME) {
-        throw "Unexpected distribution target directory name: $($CommonModulesRepoDirectory.FullName)"
+    $stream = $null
+    try {
+        $file_share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
+        $stream = [System.IO.File]::Open($File.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, $file_share)
     }
-
-    if (-not (Test-DirectoryContainsPath -ParentDirectory $ProjectRoot -ChildPath $CommonModulesRepoDirectory.FullName)) {
-        throw "Distribution target directory is not under the project root: $($CommonModulesRepoDirectory.FullName)"
+    catch {
+        throw "$Description is unreadable: $($File.FullName). $($_.Exception.Message)"
+    }
+    finally {
+        if ($null -ne $stream) {
+            $stream.Dispose()
+        }
     }
 }
 
-function Get-TargetCommonModulesRepoDirectories {
+function New-SourcePackageEntry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$File
+    )
+
+    $File.Refresh()
+    if (-not $File.Exists -or (Test-ReparsePoint -Item $File)) {
+        throw "Source package entry must remain an ordinary non-reparse file: $($File.FullName)"
+    }
+    Assert-FileReadable -File $File -Description 'Source package entry'
+
+    return [pscustomobject]@{
+        Name = $File.Name
+        FullName = $File.FullName
+        LastWriteTimeUtc = $File.LastWriteTimeUtc
+        Length = $File.Length
+    }
+}
+
+function Read-DistributionSourcePackage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.DirectoryInfo]$SourceRepository
+    )
+
+    $inventory = @(Get-ChildItem -LiteralPath $SourceRepository.FullName -Force -ErrorAction Stop)
+    foreach ($item in $inventory) {
+        if ($item.PSIsContainer -or $item -isnot [System.IO.FileInfo] -or (Test-ReparsePoint -Item $item)) {
+            throw "Source package must be flat and contain only ordinary non-reparse files: $($item.FullName)"
+        }
+    }
+
+    $manifest_file = Get-ExactPackageFile -Inventory $inventory -ExpectedName $COMMON_MODULES_MANIFEST_FILE_NAME -SourceRepositoryPath $SourceRepository.FullName
+    $manifest = Read-CommonModulesManifest -ManifestPath $manifest_file.FullName
+
+    $expected_names = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::Ordinal)
+    $files_by_name = New-Object 'System.Collections.Generic.Dictionary[string, System.IO.FileInfo]' ([System.StringComparer]::Ordinal)
+    [void]$expected_names.Add($COMMON_MODULES_MANIFEST_FILE_NAME)
+    $files_by_name.Add($COMMON_MODULES_MANIFEST_FILE_NAME, $manifest_file)
+
+    foreach ($record in $manifest.Records) {
+        $module_file = Get-ExactPackageFile -Inventory $inventory -ExpectedName $record.ModuleFile -SourceRepositoryPath $SourceRepository.FullName
+        [void]$expected_names.Add($record.ModuleFile)
+        $files_by_name.Add($record.ModuleFile, $module_file)
+
+        if ([string]::Equals([System.IO.Path]::GetExtension($record.ModuleFile), '.frm', [System.StringComparison]::Ordinal)) {
+            $sidecar_name = [System.IO.Path]::GetFileNameWithoutExtension($record.ModuleFile) + '.frx'
+            $sidecar_file = Get-ExactPackageFile -Inventory $inventory -ExpectedName $sidecar_name -SourceRepositoryPath $SourceRepository.FullName -AllowAbsent
+            if ($null -ne $sidecar_file) {
+                [void]$expected_names.Add($sidecar_name)
+                $files_by_name.Add($sidecar_name, $sidecar_file)
+            }
+        }
+    }
+
+    foreach ($item in $inventory) {
+        if (-not $expected_names.Contains($item.Name)) {
+            throw "Source package contains an unexpected entry: $($item.FullName)"
+        }
+    }
+
+    [string[]]$ordered_names = @($files_by_name.Keys)
+    [Array]::Sort($ordered_names, [System.StringComparer]::Ordinal)
+    $entries = New-Object 'System.Collections.Generic.List[object]'
+    foreach ($name in $ordered_names) {
+        $entries.Add((New-SourcePackageEntry -File $files_by_name[$name]))
+    }
+
+    return [pscustomobject]@{
+        SourceRepository = $SourceRepository
+        Entries = $entries.ToArray()
+    }
+}
+
+function Assert-DistributionSourceSnapshot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$SourcePackage
+    )
+
+    $source_repository = Get-Item -LiteralPath $SourcePackage.SourceRepository.FullName -Force -ErrorAction Stop
+    if (-not $source_repository.PSIsContainer -or $source_repository -isnot [System.IO.DirectoryInfo] -or
+        -not [string]::Equals($source_repository.Name, $COMMON_MODULES_REPO_DIR_NAME, [System.StringComparison]::Ordinal) -or
+        (Test-ReparsePoint -Item $source_repository)) {
+        throw "Source repository is no longer the validated ordinary '$COMMON_MODULES_REPO_DIR_NAME' directory: $($SourcePackage.SourceRepository.FullName)"
+    }
+
+    $inventory = @(Get-ChildItem -LiteralPath $source_repository.FullName -Force -ErrorAction Stop)
+    if ($inventory.Count -ne $SourcePackage.Entries.Count) {
+        throw "Source package inventory changed after validation: $($source_repository.FullName)"
+    }
+
+    foreach ($item in $inventory) {
+        if ($item.PSIsContainer -or $item -isnot [System.IO.FileInfo] -or (Test-ReparsePoint -Item $item)) {
+            throw "Source package became invalid after validation: $($item.FullName)"
+        }
+    }
+
+    foreach ($entry in $SourcePackage.Entries) {
+        $matches = @($inventory | Where-Object {
+            [string]::Equals($_.Name, $entry.Name, [System.StringComparison]::Ordinal)
+        })
+        if ($matches.Count -ne 1) {
+            throw "Source package inventory changed after validation: $($entry.FullName)"
+        }
+
+        $file = $matches[0]
+        $file.Refresh()
+        if (-not $file.Exists -or (Test-ReparsePoint -Item $file) -or
+            $file.LastWriteTimeUtc.Ticks -ne $entry.LastWriteTimeUtc.Ticks -or
+            $file.Length -ne $entry.Length) {
+            throw "Source package metadata changed after validation: $($entry.FullName)"
+        }
+        Assert-FileReadable -File $file -Description 'Source package entry'
+    }
+}
+
+function New-DistributionCandidateFailure {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SortPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    return [pscustomobject]@{
+        Kind = 'Failure'
+        SortPath = $SortPath
+        TargetPath = $SortPath
+        TargetDirectory = $null
+        Message = $Message
+    }
+}
+
+function New-DistributionTargetCandidate {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.DirectoryInfo]$TargetDirectory
+    )
+
+    return [pscustomobject]@{
+        Kind = 'Target'
+        SortPath = (Get-NormalizedLexicalPath -Path $TargetDirectory.FullName)
+        TargetPath = $TargetDirectory.FullName
+        TargetDirectory = $TargetDirectory
+        Message = $null
+    }
+}
+
+function Find-DistributionCandidates {
     param(
         [Parameter(Mandatory = $true)]
         [System.IO.DirectoryInfo]$SearchRoot,
 
         [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$SourceDirectory
+        [AllowEmptyCollection()]
+        [object[]]$SearchRootInventory,
+
+        [Parameter(Mandatory = $true)]
+        [System.IO.DirectoryInfo]$SourceRepository
     )
 
-    $target_directories = @()
-    $project_roots = @(Get-ChildItem -LiteralPath $SearchRoot.FullName -Directory -Force | Sort-Object -Property FullName)
-    foreach ($project_root in $project_roots) {
-        $target_common_modules_repo_path = Join-Path $project_root.FullName $COMMON_MODULES_REPO_DIR_NAME
-        if (-not (Test-Path -LiteralPath $target_common_modules_repo_path -PathType Container)) {
+    $candidates = New-Object 'System.Collections.Generic.List[object]'
+    $target_count = 0
+    $failure_count = 0
+    $source_path = Get-NormalizedLexicalPath -Path $SourceRepository.FullName
+
+    $project_directories = @($SearchRootInventory | Where-Object { $_.PSIsContainer })
+    $ordered_projects = @(Get-OrdinalSortedItems -Items $project_directories -PropertyName 'FullName')
+    foreach ($project_directory in $ordered_projects) {
+        if (Test-ReparsePoint -Item $project_directory) {
+            Write-Warning "Distribution project child is a reparse point and was skipped: $($project_directory.FullName)"
             continue
         }
 
-        $target_common_modules_repo = Get-DirectoryInfo -Path $target_common_modules_repo_path -Description "target $($project_root.Name) common_modules_repo"
-        Assert-CommonModulesRepoPath -ProjectRoot $project_root -CommonModulesRepoDirectory $target_common_modules_repo
-        if (Test-SamePath -LeftPath $SourceDirectory.FullName -RightPath $target_common_modules_repo.FullName) {
+        try {
+            $project_inventory = @(Get-ChildItem -LiteralPath $project_directory.FullName -Force -ErrorAction Stop)
+            $matches = @($project_inventory | Where-Object {
+                [string]::Equals($_.Name, $COMMON_MODULES_REPO_DIR_NAME, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+        }
+        catch {
+            Write-Warning "Could not determine whether project child opted in; it was skipped untouched: $($project_directory.FullName). $($_.Exception.Message)"
             continue
         }
 
-        $target_directories += $target_common_modules_repo
-    }
-
-    if ($target_directories.Count -eq 0) {
-        throw "Target $COMMON_MODULES_REPO_DIR_NAME was not found: $($SearchRoot.FullName)"
-    }
-
-    return $target_directories
-}
-
-function Assert-SourceDirectoryNotEmpty {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$SourceDirectory
-    )
-
-    $source_items = @(Get-ChildItem -LiteralPath $SourceDirectory.FullName -Force)
-    if ($source_items.Count -eq 0) {
-        throw "The source directory contains no files: $($SourceDirectory.FullName)"
-    }
-}
-
-function Clear-DirectoryContents {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$Directory
-    )
-
-    $directory_path = $Directory.FullName
-    foreach ($item in Get-ChildItem -LiteralPath $directory_path -Force) {
-        if (-not (Test-DirectoryContainsPath -ParentDirectory $Directory -ChildPath $item.FullName)) {
-            throw "The item to delete is outside the target directory: $($item.FullName)"
+        if ($matches.Count -eq 0) {
+            continue
         }
 
-        Remove-Item -LiteralPath $item.FullName -Recurse -Force
+        $expected_target_path = Get-NormalizedLexicalPath -Path (Join-Path $project_directory.FullName $COMMON_MODULES_REPO_DIR_NAME)
+        if ($matches.Count -ne 1) {
+            $candidates.Add((New-DistributionCandidateFailure -SortPath $expected_target_path -Message "Multiple case-insensitive '$COMMON_MODULES_REPO_DIR_NAME' entries were found in '$($project_directory.FullName)'."))
+            $failure_count++
+            continue
+        }
+
+        $match = $matches[0]
+        if (-not [string]::Equals($match.Name, $COMMON_MODULES_REPO_DIR_NAME, [System.StringComparison]::Ordinal)) {
+            $candidates.Add((New-DistributionCandidateFailure -SortPath $expected_target_path -Message "Opt-in repository must use the ordinal-exact '$COMMON_MODULES_REPO_DIR_NAME' name: $($match.FullName)"))
+            $failure_count++
+            continue
+        }
+        if (-not $match.PSIsContainer -or $match -isnot [System.IO.DirectoryInfo] -or (Test-ReparsePoint -Item $match)) {
+            $candidates.Add((New-DistributionCandidateFailure -SortPath $expected_target_path -Message "Opt-in repository must be an ordinary non-reparse directory: $($match.FullName)"))
+            $failure_count++
+            continue
+        }
+
+        $target_path = Get-NormalizedLexicalPath -Path $match.FullName
+        if ([string]::Equals($target_path, $source_path, [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+
+        $candidates.Add((New-DistributionTargetCandidate -TargetDirectory $match))
+        $target_count++
+    }
+
+    $ordered_candidates = @(Get-OrdinalSortedItems -Items $candidates.ToArray() -PropertyName 'SortPath')
+    return [pscustomobject]@{
+        Candidates = $ordered_candidates
+        TargetCount = $target_count
+        FailureCount = $failure_count
     }
 }
 
-function Copy-DirectoryContents {
+function Get-CurrentDistributionTarget {
     param(
         [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$SourceDirectory,
-
-        [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$DestinationDirectory
+        [string]$TargetPath
     )
 
-    $source_items = @(Get-ChildItem -LiteralPath $SourceDirectory.FullName -Force)
-    if ($source_items.Count -eq 0) {
-        throw "The source directory contains no files: $($SourceDirectory.FullName)"
+    try {
+        $target = Get-Item -LiteralPath $TargetPath -Force -ErrorAction Stop
+    }
+    catch {
+        if ($_.CategoryInfo.Category -eq [System.Management.Automation.ErrorCategory]::ObjectNotFound) {
+            return $null
+        }
+        throw
     }
 
-    foreach ($source_item in $source_items) {
-        Copy-Item -LiteralPath $source_item.FullName -Destination $DestinationDirectory.FullName -Recurse -Force
-        Write-Information "Copied '$($source_item.Name)' to '$($DestinationDirectory.FullName)'."
+    if (-not $target.PSIsContainer -or $target -isnot [System.IO.DirectoryInfo] -or
+        -not [string]::Equals($target.Name, $COMMON_MODULES_REPO_DIR_NAME, [System.StringComparison]::Ordinal) -or
+        (Test-ReparsePoint -Item $target)) {
+        throw "Admitted target is no longer an ordinary non-reparse '$COMMON_MODULES_REPO_DIR_NAME' directory: $TargetPath"
+    }
+
+    return $target
+}
+
+function Get-DistributionTargetPreflight {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.DirectoryInfo]$TargetDirectory
+    )
+
+    $pending = New-Object 'System.Collections.Generic.Queue[System.IO.DirectoryInfo]'
+    $pending.Enqueue($TargetDirectory)
+    $root_inventory = @()
+    $is_first = $true
+
+    while ($pending.Count -gt 0) {
+        $directory = $pending.Dequeue()
+        $inventory = @(Get-ChildItem -LiteralPath $directory.FullName -Force -ErrorAction Stop)
+        if ($is_first) {
+            $root_inventory = $inventory
+            $is_first = $false
+        }
+
+        foreach ($item in $inventory) {
+            if (Test-ReparsePoint -Item $item) {
+                throw "Target contains a reparse entry and cannot be changed safely: $($item.FullName)"
+            }
+            if ($item.PSIsContainer) {
+                if ($item -isnot [System.IO.DirectoryInfo]) {
+                    throw "Target contains a nonordinary directory entry: $($item.FullName)"
+                }
+                $pending.Enqueue($item)
+            }
+            elseif ($item -isnot [System.IO.FileInfo]) {
+                throw "Target contains a nonordinary file entry: $($item.FullName)"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        RootInventory = $root_inventory
     }
 }
 
-function Test-DirectoryContentsEqual {
+function Test-DistributionPackageMatch {
     param(
         [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$SourceDirectory,
+        [object]$SourcePackage,
 
         [Parameter(Mandatory = $true)]
-        [System.IO.DirectoryInfo]$DestinationDirectory
+        [AllowEmptyCollection()]
+        [object[]]$TargetInventory
     )
 
-    $source_items = @(Get-ChildItem -LiteralPath $SourceDirectory.FullName -Force)
-    $destination_items = @(Get-ChildItem -LiteralPath $DestinationDirectory.FullName -Force)
-    if ($source_items.Count -ne $destination_items.Count) {
+    if ($TargetInventory.Count -ne $SourcePackage.Entries.Count) {
         return $false
     }
 
-    foreach ($source_item in $source_items) {
-        if ($source_item.PSIsContainer) {
+    foreach ($source_entry in $SourcePackage.Entries) {
+        $matches = @($TargetInventory | Where-Object {
+            [string]::Equals($_.Name, $source_entry.Name, [System.StringComparison]::Ordinal)
+        })
+        if ($matches.Count -ne 1 -or $matches[0].PSIsContainer -or $matches[0] -isnot [System.IO.FileInfo]) {
             return $false
         }
 
-        $destination_match = @($destination_items | Where-Object {
-            [string]::Equals($_.Name, $source_item.Name, [System.StringComparison]::Ordinal)
-        })
-        if ($destination_match.Count -ne 1 -or $destination_match[0].PSIsContainer) {
-            return $false
-        }
-        if (-not (Test-FileContentEqual -LeftPath $source_item.FullName -RightPath $destination_match[0].FullName)) {
+        $target_file = $matches[0]
+        $target_file.Refresh()
+        if (-not $target_file.Exists -or
+            $target_file.LastWriteTimeUtc.Ticks -ne $source_entry.LastWriteTimeUtc.Ticks -or
+            $target_file.Length -ne $source_entry.Length) {
             return $false
         }
     }
@@ -241,28 +514,126 @@ function Test-DirectoryContentsEqual {
     return $true
 }
 
+function Clear-DistributionTarget {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$TargetInventory
+    )
+
+    $ordered_items = @(Get-OrdinalSortedItems -Items $TargetInventory -PropertyName 'FullName')
+    foreach ($item in $ordered_items) {
+        Remove-Item -LiteralPath $item.FullName -Recurse -Force -ErrorAction Stop
+    }
+}
+
+function Copy-DistributionPackage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$SourcePackage,
+
+        [Parameter(Mandatory = $true)]
+        [System.IO.DirectoryInfo]$TargetDirectory
+    )
+
+    foreach ($source_entry in $SourcePackage.Entries) {
+        $destination_path = Join-Path $TargetDirectory.FullName $source_entry.Name
+        Copy-Item -LiteralPath $source_entry.FullName -Destination $destination_path -Force -ErrorAction Stop
+        Write-Information "Copied '$($source_entry.Name)' to '$($TargetDirectory.FullName)'."
+    }
+}
+
 try {
-    $source_directory = Get-SourceDirectory
-    Assert-SourceDirectoryNotEmpty -SourceDirectory $source_directory
-    $search_root = Get-DistributionSearchRoot -SourceDirectory $source_directory
-    $target_common_modules_repos = @(Get-TargetCommonModulesRepoDirectories -SearchRoot $search_root -SourceDirectory $source_directory)
+    $search_root = Resolve-DistributionSearchRoot -Arguments $args -InvocationWorkingDirectory $invocation_working_directory
+    $search_root_inventory = @(Get-ChildItem -LiteralPath $search_root.FullName -Force -ErrorAction Stop)
+    $source_repository = Get-WrapperSourceRepository -InvocationWorkingDirectory $invocation_working_directory
+    $source_package = Read-DistributionSourcePackage -SourceRepository $source_repository
+    $discovery = Find-DistributionCandidates -SearchRoot $search_root -SearchRootInventory $search_root_inventory -SourceRepository $source_repository
+}
+catch {
+    throw "Distribution global failure: $($_.Exception.Message)"
+}
 
-    Write-Host "Source: $($source_directory.FullName)"
-    Write-Host "Distribution target search root: $($search_root.FullName)"
+Write-Host "Source: $($source_repository.FullName)"
+Write-Host "Distribution Search Root: $($search_root.FullName)"
 
-    foreach ($target_common_modules_repo in $target_common_modules_repos) {
-        if (Test-DirectoryContentsEqual -SourceDirectory $source_directory -DestinationDirectory $target_common_modules_repo) {
-            Write-Host "Unchanged distribution target: $($target_common_modules_repo.FullName)"
-            continue
-        }
+if ($discovery.TargetCount -eq 0 -and $discovery.FailureCount -eq 0) {
+    throw "No eligible distribution target was found: $($search_root.FullName)"
+}
 
-        Write-Host "Updating distribution target: $($target_common_modules_repo.FullName)"
-        Clear-DirectoryContents -Directory $target_common_modules_repo
-        Copy-DirectoryContents -SourceDirectory $source_directory -DestinationDirectory $target_common_modules_repo
+$has_candidate_failure = $false
+foreach ($candidate in $discovery.Candidates) {
+    if ([string]::Equals($candidate.Kind, 'Failure', [System.StringComparison]::Ordinal)) {
+        $has_candidate_failure = $true
+        Write-Error -Message "Distribution candidate failure for '$($candidate.TargetPath)': $($candidate.Message)" -ErrorAction Continue
+        continue
     }
 
-    Write-Host 'Common modules repo distribution completed.'
+    try {
+        $target_directory = Get-CurrentDistributionTarget -TargetPath $candidate.TargetPath
+    }
+    catch {
+        $has_candidate_failure = $true
+        Write-Error -Message "Distribution candidate failure for '$($candidate.TargetPath)': $($_.Exception.Message)" -ErrorAction Continue
+        continue
+    }
+    if ($null -eq $target_directory) {
+        Write-Warning "Admitted distribution target disappeared before its turn and was skipped: $($candidate.TargetPath)"
+        continue
+    }
+
+    try {
+        Assert-DistributionSourceSnapshot -SourcePackage $source_package
+    }
+    catch {
+        throw "Distribution global failure: the source package changed or became unreadable after validation. $($_.Exception.Message)"
+    }
+
+    try {
+        $target_preflight = Get-DistributionTargetPreflight -TargetDirectory $target_directory
+        $is_unchanged = Test-DistributionPackageMatch -SourcePackage $source_package -TargetInventory $target_preflight.RootInventory
+    }
+    catch {
+        $has_candidate_failure = $true
+        Write-Error -Message "Distribution candidate failure for '$($candidate.TargetPath)': $($_.Exception.Message)" -ErrorAction Continue
+        continue
+    }
+
+    if ($is_unchanged) {
+        Write-Host "UNCHANGED: $($target_directory.FullName)"
+        continue
+    }
+
+    Write-Host "Updating distribution target: $($target_directory.FullName)"
+    try {
+        Clear-DistributionTarget -TargetInventory $target_preflight.RootInventory
+    }
+    catch {
+        $has_candidate_failure = $true
+        Write-Error -Message "Distribution candidate failure while clearing '$($candidate.TargetPath)': $($_.Exception.Message)" -ErrorAction Continue
+        continue
+    }
+
+    try {
+        Copy-DistributionPackage -SourcePackage $source_package -TargetDirectory $target_directory
+    }
+    catch {
+        $copy_error = $_
+        try {
+            Assert-DistributionSourceSnapshot -SourcePackage $source_package
+        }
+        catch {
+            throw "Distribution global failure: the source package changed or became unreadable during copy. $($_.Exception.Message)"
+        }
+
+        $has_candidate_failure = $true
+        Write-Error -Message "Distribution candidate failure while copying to '$($candidate.TargetPath)': $($copy_error.Exception.Message)" -ErrorAction Continue
+        continue
+    }
 }
-finally {
-    Set-Location $current_dir
+
+if ($has_candidate_failure) {
+    throw 'One or more distribution candidates failed.'
 }
+
+Write-Host 'CommonModules package distribution completed.'
