@@ -59,7 +59,7 @@ Call WsSrv.WriteCell(target_cell, "value", TypeConvert:=False)
 - Workbook import, extraction, vba-dev build/test/publish, and `UnitTestMain` require Excel's "Trust access to the VBA project object model" setting.
 - Do not leave the target `.xlsm` open manually while importing, extracting, building, testing, or publishing.
 - API reference generation requires Doxygen. `tools/DoxyVB6/DoxyVB6.exe` is used as the VBA input filter.
-- Tool wrappers resolve `vba-dev.exe` in this order: `VBA_DEV_EXE`, the known workspace development build, then `PATH`.
+- Tool wrappers resolve `vba-dev.exe` in this order: `VBA_DEV_EXE`, the repository-bundled `tools\vba-dev\vba-dev.exe`, then `PATH`.
 
 ## CommonModules vba-dev Project
 

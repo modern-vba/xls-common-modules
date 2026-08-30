@@ -39,9 +39,9 @@ When in doubt, prioritize reproducibility after `vba-dev` build/test/import/expo
 
 ### 3.1 File Placement and Synchronization Boundaries
 
-- For vba-dev projects, VBA sources go under the document source set declared by `project.json` `documents.*.sourcePath`.
+- For vba-dev projects, VBA sources go under the document source set declared by `vba-project.json` `documents.*.sourcePath`.
 - Workbook-local `modules` directories are used only for explicit workbook-level `vba-dev import --from <book-dir>\modules --to <book.xlsm>` or `vba-dev export --from <book.xlsm> --to <book-dir>\modules` workflows.
-- Shared modules are copied from each project root's `common_modules_repo` into document source sets by `vba-dev common-module update`. The selected files are determined by `project.json` `commonModules` entries and the CommonModules manifest.
+- Shared modules are copied from each project root's `common_modules_repo` into document source sets by `vba-dev common-module update`. The selected files are determined by `vba-project.json` `commonModules` entries and the CommonModules manifest.
 - When updating common modules, first edit `xls-common-modules\CommonModules\src\CommonModules`, verify with `vba-dev test`, collect into `common_modules_repo`, distribute that repo, and run `UPDATE_COMMON_MODS` for vba-dev project consumers when needed.
 - Do not edit distributed `common_modules_repo` copies, document source set copies, or workbook-local source set copies first.
 - Excel workbooks are managed as `.xlsm`; VBA sources are managed as `.bas` / `.cls`.

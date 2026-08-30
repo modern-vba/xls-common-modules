@@ -201,7 +201,7 @@ function New-TestProject {
         }
         commonModulesRepository = '../common_modules_repo'
     }
-    $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Root 'project.json') -Encoding UTF8
+    $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Root 'vba-project.json') -Encoding UTF8
 
     return [pscustomobject]@{
         Root = $Root

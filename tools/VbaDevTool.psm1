@@ -111,9 +111,9 @@ function Read-VbaDevProjectManifest {
         [string]$ProjectRoot
     )
 
-    $manifest_path = Join-Path $ProjectRoot 'project.json'
+    $manifest_path = Join-Path $ProjectRoot 'vba-project.json'
     if (-not (Test-Path -LiteralPath $manifest_path -PathType Leaf)) {
-        throw "project.json was not found: $manifest_path"
+        throw "vba-project.json was not found: $manifest_path"
     }
 
     return (Get-Content -LiteralPath $manifest_path -Raw | ConvertFrom-Json)
@@ -147,7 +147,7 @@ function Get-VbaDevProjectDocumentContext {
         [string]::Equals($_.Name, $DocumentName, [System.StringComparison]::OrdinalIgnoreCase)
     } | Select-Object -First 1
     if ($null -eq $document_entry) {
-        throw "Document '$DocumentName' is not defined in project.json: $resolved_project_root"
+        throw "Document '$DocumentName' is not defined in vba-project.json: $resolved_project_root"
     }
 
     [pscustomobject]@{
@@ -189,7 +189,7 @@ function Get-VbaDevProjectRoots {
 
     while ($pending.Count -gt 0) {
         $directory = $pending.Dequeue()
-        if (Test-Path -LiteralPath (Join-Path $directory.FullName 'project.json') -PathType Leaf) {
+        if (Test-Path -LiteralPath (Join-Path $directory.FullName 'vba-project.json') -PathType Leaf) {
             $directory.FullName
         }
 
@@ -262,7 +262,7 @@ function Get-DocumentationOwnerContext {
     $source_directory = Get-RequiredDirectoryTarget -Path $SourceSetPath -Description 'source set directory'
     $current = $source_directory
     while ($null -ne $current) {
-        $manifest_path = Join-Path $current.FullName 'project.json'
+        $manifest_path = Join-Path $current.FullName 'vba-project.json'
         if (Test-Path -LiteralPath $manifest_path -PathType Leaf) {
             $manifest = Read-VbaDevProjectManifest -ProjectRoot $current.FullName
             foreach ($entry in Get-VbaDevDocumentEntries -Manifest $manifest) {
