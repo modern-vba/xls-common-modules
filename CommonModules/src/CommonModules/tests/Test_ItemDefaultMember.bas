@@ -220,11 +220,11 @@ Public Sub Test_WorksheetVirtualTable_DefaultMemberGet_ReturnsSameRowAsItem(ByVa
     Set col_ranges = New_ObjectList("WorksheetRangeBounds")
     Call col_ranges.Add(New_RangeBounds(Row:=2, Column:=3, FinishRow:=4, FinishColumn:=3, Sheet:="S", Book:="B.xlsm"))
 
-    Dim headers(0 To 0) As String
-    headers(0) = "Name"
+    Dim header_names(0 To 0) As String
+    header_names(0) = "Name"
 
     Dim table As WorksheetVirtualTable
-    Set table = New_WorksheetVirtualTable(col_ranges, headers)
+    Set table = New_WorksheetVirtualTable(col_ranges, header_names)
 
     ' Act
     Dim expected_row As ObjectDictionary

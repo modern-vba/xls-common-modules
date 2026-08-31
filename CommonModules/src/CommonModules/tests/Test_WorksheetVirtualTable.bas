@@ -145,12 +145,12 @@ Public Sub Test_NewWorksheetVirtualTable_TreatFirstRowAsHeader_JoinsMultiColumnH
     Dim table As WorksheetVirtualTable
     Set table = New_WorksheetVirtualTable(col_ranges, ignored_header_names, TreatFirstRowAsHeader:=True, HeaderJoinDelimiter:=" ")
 
-    Dim headers() As String
+    Dim header_names() As String
     Dim first_row As ObjectDictionary
     Dim name_bounds As WorksheetRangeBounds
     Dim status_bounds As WorksheetRangeBounds
     If Err.Number = 0 Then
-        headers = table.Headers
+        header_names = table.Headers
         Set first_row = table.Item(0)
         Set name_bounds = first_row.Item("First Last")
         Set status_bounds = first_row.Item("Status")
@@ -159,8 +159,8 @@ Public Sub Test_NewWorksheetVirtualTable_TreatFirstRowAsHeader_JoinsMultiColumnH
     ' Assert
     If Not Assert.ErrorNotRaised(0, Err.Number, Err.Source, Err.Description) Then Exit Sub
     Assert.EqualsNumeric 2, table.RowCount
-    Assert.Equals "First Last", headers(0)
-    Assert.Equals "Status", headers(1)
+    Assert.Equals "First Last", header_names(0)
+    Assert.Equals "Status", header_names(1)
     Assert.IsTrue name_bounds.Equals(New_RangeBounds(Row:=41, Column:=10, FinishRow:=41, FinishColumn:=11, Sheet:="test_input", Book:=ThisWorkbook.Name))
     Assert.IsTrue status_bounds.Equals(New_RangeBounds(Row:=41, Column:=13, FinishRow:=41, FinishColumn:=13, Sheet:="test_input", Book:=ThisWorkbook.Name))
 End Sub
@@ -333,8 +333,8 @@ Public Sub Test_NewWorksheetVirtualTable_EmptyTypedRangeListAndEmptyHeaders_Retu
     Dim table As WorksheetVirtualTable
     Set table = New_WorksheetVirtualTable(col_ranges, header_names)
 
-    Dim headers() As String
-    If Err.Number = 0 Then headers = table.Headers
+    Dim actual_header_names() As String
+    If Err.Number = 0 Then actual_header_names = table.Headers
 
     Dim each_count As Long
     Dim row_item As Variant
@@ -348,7 +348,7 @@ Public Sub Test_NewWorksheetVirtualTable_EmptyTypedRangeListAndEmptyHeaders_Retu
     If Not Assert.ErrorNotRaised(0, Err.Number, Err.Source, Err.Description) Then Exit Sub
     Assert.EqualsNumeric 0, table.Count
     Assert.EqualsNumeric 0, table.RowCount
-    Assert.IsTrue IsEmptyArray(headers)
+    Assert.IsTrue IsEmptyArray(actual_header_names)
     Assert.EqualsNumeric 0, each_count
 End Sub
 

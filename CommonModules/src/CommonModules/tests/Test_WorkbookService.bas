@@ -220,7 +220,7 @@ Public Sub Test_OpenOriginalWorkbook_SavedWorkbook_OpensHiddenAndRestoresActiveW
     Dim source_book As Workbook
     Set source_book = Workbooks.Add
     source_book.Worksheets(1).Range("A1").Value = "original"
-    Call source_book.SaveAs(Filename:=file_path, FileFormat:=GetExcelFileFormat(file_path))
+    Call source_book.SaveAs(FileName:=file_path, FileFormat:=GetExcelFileFormat(file_path))
     Call source_book.Close(SaveChanges:=False)
 
     Call ThisWorkbook.Activate
@@ -277,7 +277,7 @@ Public Sub Test_OpenOriginalWorkbook_ReadOnlyTrue_OpensReadOnly(ByVal Assert As 
     Dim source_book As Workbook
     Set source_book = Workbooks.Add
     source_book.Worksheets(1).Range("A1").Value = "read only probe"
-    Call source_book.SaveAs(Filename:=file_path, FileFormat:=GetExcelFileFormat(file_path))
+    Call source_book.SaveAs(FileName:=file_path, FileFormat:=GetExcelFileFormat(file_path))
     Call source_book.Close(SaveChanges:=False)
 
     ' Act
