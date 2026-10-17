@@ -1,0 +1,400 @@
+{
+  "schemaVersion": 1,
+  "projectName": "CommonModules",
+  "primaryDocument": "CommonModules",
+  "documents": {
+    "CommonModules": {
+      "kind": "excel",
+      "sourcePath": "src/CommonModules",
+      "templatePath": "src/CommonModules/CommonModules.xlsm",
+      "publishPath": "publish/CommonModules.xlsm",
+      "commonModules": [
+        {
+          "name": "ApplicationScreenUpdateManager",
+          "moduleFile": "ApplicationScreenUpdateManager.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "ArrayObject",
+          "moduleFile": "ArrayObject.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IEnumerator",
+          "moduleFile": "IEnumerator.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Enumerator",
+          "moduleFile": "Enumerator.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IComparable",
+          "moduleFile": "IComparable.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IDuplicateCheckable",
+          "moduleFile": "IDuplicateCheckable.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IElementTypeProvider",
+          "moduleFile": "IElementTypeProvider.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IEquatable",
+          "moduleFile": "IEquatable.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IStringable",
+          "moduleFile": "IStringable.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "ObjectSet",
+          "moduleFile": "ObjectSet.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "ObjectList",
+          "moduleFile": "ObjectList.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "WorksheetRangeBoundsEnumerator",
+          "moduleFile": "WorksheetRangeBoundsEnumerator.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "WorksheetRangeBounds",
+          "moduleFile": "WorksheetRangeBounds.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "DebugInformation",
+          "moduleFile": "DebugInformation.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "ProgressStatus",
+          "moduleFile": "ProgressStatus.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "CommonRunStateManager",
+          "moduleFile": "CommonRunStateManager.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Fx_Common",
+          "moduleFile": "Fx_Common.bas",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IWorkbookService",
+          "moduleFile": "IWorkbookService.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IWorksheetService",
+          "moduleFile": "IWorksheetService.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "WorkbookService",
+          "moduleFile": "WorkbookService.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "WorksheetService",
+          "moduleFile": "WorksheetService.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Lib_Common",
+          "moduleFile": "Lib_Common.bas",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "ObjectDictionary",
+          "moduleFile": "ObjectDictionary.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "WorksheetVirtualTableEnumerator",
+          "moduleFile": "WorksheetVirtualTableEnumerator.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "WorksheetVirtualTable",
+          "moduleFile": "WorksheetVirtualTable.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Lib_CommonConstructor",
+          "moduleFile": "Lib_CommonConstructor.bas",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Counter",
+          "moduleFile": "Counter.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "CounterSet",
+          "moduleFile": "CounterSet.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IFileSystemService",
+          "moduleFile": "IFileSystemService.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "ITextFileEntity",
+          "moduleFile": "ITextFileEntity.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "ITextFileService",
+          "moduleFile": "ITextFileService.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "IUserInputSheet",
+          "moduleFile": "IUserInputSheet.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "FileSystemService",
+          "moduleFile": "FileSystemService.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Lib_FileSystem",
+          "moduleFile": "Lib_FileSystem.bas",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "UserInputSheet",
+          "moduleFile": "UserInputSheet.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Lib_InputSheet",
+          "moduleFile": "Lib_InputSheet.bas",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Lib_IPv4",
+          "moduleFile": "Lib_IPv4.bas",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "TextFileEntity",
+          "moduleFile": "TextFileEntity.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "TextFileService",
+          "moduleFile": "TextFileService.cls",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "Lib_TextFile",
+          "moduleFile": "Lib_TextFile.bas",
+          "requested": true,
+          "testOnly": false,
+          "orphaned": false
+        },
+        {
+          "name": "UnitTestAssert",
+          "moduleFile": "UnitTestAssert.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "Lib_UnitTest",
+          "moduleFile": "Lib_UnitTest.bas",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "TestDoubleCallRecord",
+          "moduleFile": "TestDoubleCallRecord.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "TestDoubleVariantKeyBuilder",
+          "moduleFile": "TestDoubleVariantKeyBuilder.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "TestDoubleBehaviorStore",
+          "moduleFile": "TestDoubleBehaviorStore.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "FileSystemServiceTestDouble",
+          "moduleFile": "FileSystemServiceTestDouble.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "TextFileEntityTestDouble",
+          "moduleFile": "TextFileEntityTestDouble.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "TextFileServiceTestDouble",
+          "moduleFile": "TextFileServiceTestDouble.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "UserInputSheetTestDouble",
+          "moduleFile": "UserInputSheetTestDouble.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "WorkbookServiceTestDouble",
+          "moduleFile": "WorkbookServiceTestDouble.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        },
+        {
+          "name": "WorksheetServiceTestDouble",
+          "moduleFile": "WorksheetServiceTestDouble.cls",
+          "requested": true,
+          "testOnly": true,
+          "orphaned": false
+        }
+      ],
+      "references": [
+        {
+          "name": "Microsoft Excel 16.0 Object Library",
+          "requested": true
+        },
+        {
+          "name": "OLE Automation",
+          "requested": true
+        },
+        {
+          "name": "Microsoft Office 16.0 Object Library",
+          "requested": true
+        },
+        {
+          "name": "Microsoft Scripting Runtime",
+          "requested": true
+        },
+        {
+          "name": "Microsoft VBScript Regular Expressions 5.5",
+          "requested": true
+        }
+      ]
+    }
+  },
+  "commonModulesRepository": "../common_modules_repo",
+  "commandDefaults": {
+    "test": {
+      "format": "text"
+    }
+  }
+}
