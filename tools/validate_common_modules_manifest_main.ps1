@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$ManifestPath = (Join-Path (Join-Path (Join-Path (Join-Path $PSScriptRoot '..\CommonModules') 'src') 'CommonModules') 'common-modules-manifest.tsv'),
     [string]$ModulesDirectory = (Join-Path (Join-Path (Join-Path $PSScriptRoot '..\CommonModules') 'src') 'CommonModules'),
     [switch]$RequireAllFiles

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 Imports VBA modules into a specified Excel file.
 

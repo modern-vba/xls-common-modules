@@ -1,4 +1,4 @@
-﻿# Load the public functions.
+# Load the public functions.
 . "$PSScriptRoot\Resolve-FileSystemPath.ps1"
 . "$PSScriptRoot\ConvertTo-FileSystemSafeName.ps1"
 

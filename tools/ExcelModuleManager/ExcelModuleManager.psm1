@@ -1,4 +1,4 @@
-﻿# Dot-sourcing other .psm1 files
+# Dot-sourcing other .psm1 files
 . $PSScriptRoot\Export-ModuleFromExcelFile.ps1
 . $PSScriptRoot\Export-AllModuleFromExcelFile.ps1
 . $PSScriptRoot\Import-ModuleToExcelFile.ps1

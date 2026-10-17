@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
 $dist_script = Join-Path $PSScriptRoot 'dist_common_mods_repo_main.ps1'

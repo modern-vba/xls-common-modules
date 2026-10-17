@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 Resolves a path string into an absolute directory path, file name, and full path.
 

@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
 
 $validator_path = Join-Path $PSScriptRoot 'validate_common_modules_manifest_main.ps1'

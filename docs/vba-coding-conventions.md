@@ -505,7 +505,7 @@ End Sub
 ### 9.3 Encoding and Line Endings
 
 - For exported `.bas` / `.cls`, prioritize compatibility with existing files.
-- New documentation and PowerShell scripts use UTF-8 by default.
+- New documentation uses UTF-8 with BOM. PowerShell files (`.ps1`, `.psm1`, `.psd1`, `.ps1xml`, `.pssc`, `.psrc`) use UTF-16 LE with BOM, CRLF line endings, and a trailing newline.
 - When handling Japanese comments or strings in VBA sources, verify that text is not corrupted after Excel import/export.
 - Preserve existing Windows CRLF line endings.
 - If a repository-specific `AGENTS.md` specifies encoding or line endings, follow that specification.

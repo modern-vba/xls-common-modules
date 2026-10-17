@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 Exports all standard modules and class modules from an Excel file.
 

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 Replaces forbidden Windows file name punctuation with fullwidth characters.
 

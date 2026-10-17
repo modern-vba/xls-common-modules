@@ -1,4 +1,4 @@
-﻿#New-ModuleManifest -Path .\ExcelModuleManager.psd1 -RootModule .\ExcelModuleManager.psm1
+#New-ModuleManifest -Path .\ExcelModuleManager.psd1 -RootModule .\ExcelModuleManager.psm1
 #
 # Module manifest for module 'ExcelModuleManager'
 # 

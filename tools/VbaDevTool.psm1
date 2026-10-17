@@ -1,4 +1,4 @@
-﻿function Get-RepositoryRoot {
+function Get-RepositoryRoot {
     return (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 }
 
