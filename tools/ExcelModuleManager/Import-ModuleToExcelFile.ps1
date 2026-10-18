@@ -1,29 +1,70 @@
 <#
 .SYNOPSIS
-Imports VBA modules into a specified Excel file.
+Imports selected VBA source files into an existing Excel workbook and saves it.
 
 .DESCRIPTION
-This script retrieves all `.bas` and `.cls` files from a specified directory and imports them into a specified Excel file (template file). The final Excel file is saved at the specified output path.
+Starts a hidden Excel instance and opens ExcelFile. For each source file, reads
+Attribute VB_Name to determine its component name, falling back to the file name.
+Recognizes .bas, .cls, and .frm as standard modules, class modules, and UserForms.
+By default, removes existing components with matching names and types, then
+imports every supplied source file. Unrelated components are retained.
+The same workbook is saved in place, closed, and its Excel instance is quit.
 
 .PARAMETER ExcelFile
-The path of the Excel file into which the modules will be imported.
+The workbook path passed to Excel.Workbooks.Open. Required, at position 0.
+Use an absolute path to an existing workbook. There is no separate output path.
 
 .PARAMETER ModuleFiles
-The path(s) to the `.bas` and `.cls` files.
+An array of paths to individual .bas, .cls, or .frm source files. Required, at
+position 1. Use explicit file paths; the function does not enumerate directories
+or expand this list into a recursive search. For forms, retain the companion
+resource (.frx) file next to the .frm file when the exported form requires it.
 
 .PARAMETER Flush
-Removes all modules in the file before importing. Cannot be used simultaneously with the `Update` parameter.
+Removes all existing standard modules, class modules, and UserForms before
+importing every supplied source file. Document modules are retained.
+Cannot be combined with Update.
 
 .PARAMETER Update
-Updates only the modules that already exist in the file and have the same name. Cannot be used simultaneously with the `Flush` parameter.
+Reimports only source files whose component name and type already exist in the
+workbook. New components are skipped. Cannot be combined with Flush.
+
+.INPUTS
+None.
+This function does not accept pipeline input.
+
+.OUTPUTS
+System.Collections.Hashtable
+Maps each imported source-file path to $true. Skipped files have no entry.
+An error before completion can prevent the result from being returned.
 
 .EXAMPLE
-Import-ModuleToExcelFile -ExcelFile "C:\path\to\workbook.xlsm" -ModuleFiles "C:\path\to\module.bas"
+$result = Import-ModuleToExcelFile -ExcelFile 'C:\work\Book.xlsm' -ModuleFiles 'C:\exports\Common_Mod.bas', 'C:\exports\Worker.cls'
+Replaces matching components, adds new ones, and saves Book.xlsm in place.
 
-In this example, the `.bas` file at `C:\path\to\module.bas` is imported into `C:\path\to\workbook.xlsm`.
+.EXAMPLE
+Import-ModuleToExcelFile -ExcelFile 'C:\work\Book.xlsm' -ModuleFiles 'C:\exports\Worker.cls' -Update
+Reimports Worker only if a class module with that name already exists.
+
+.EXAMPLE
+Import-ModuleToExcelFile -ExcelFile 'C:\work\Book.xlsm' -ModuleFiles 'C:\exports\Common_Mod.bas' -Flush
+Removes existing standard modules, classes, and forms, then imports Common_Mod.
+
+.NOTES
+Legacy Excel COM helper. Normal workspace import/export workflows use vba-dev.
+Requires installed Excel, an accessible VBA project, and Trust access to the VBA
+project object model. Close the target workbook before calling this function.
+Source names are read with Get-Content -Encoding oem. This command does not replace
+the code inside existing worksheet or ThisWorkbook document modules.
+Supports WhatIf and Confirm, but Excel creation and final workbook.Close($true)
+occur outside ShouldProcess. The final close requests saving even after an error;
+WhatIf must not be treated as a side-effect-free preview or rollback mechanism.
 
 .LINK
-https://docs.microsoft.com/powershell/
+Export-ModuleFromExcelFile
+
+.LINK
+Export-AllModuleFromExcelFile
 #>
 function Import-ModuleToExcelFile {
     [CmdletBinding(SupportsShouldProcess)]

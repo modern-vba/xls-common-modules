@@ -1,29 +1,61 @@
 <#
 .SYNOPSIS
-Exports a specified standard module or class module from an Excel file.
+Exports one named VBA component from an Excel workbook.
 
 .DESCRIPTION
-This script extracts a specified standard module or class module from the given Excel file and saves it as a file in the specified directory.
+Starts a hidden Excel instance, opens InputFile, and finds a component whose name
+matches ModuleName. Standard modules are exported as .bas, class and document
+modules as .cls, and UserForms as .frm with any companion file produced by VBIDE.
+The workbook is closed without saving, and the Excel instance is quit.
 
 .PARAMETER ModuleName
-The name of the module to export.
+The VBA component name, without its file extension. Required, at position 0.
+The name comparison is case-insensitive.
 
 .PARAMETER InputFile
-The path of the Excel file containing the module to export.
+The path to the existing Excel workbook. Required, at position 1.
 
 .PARAMETER OutputDirectory
-The path of the directory where the extracted module file will be saved.
+The export directory, at position 2. A missing directory is created. Although the
+parameter is optional in the signature, no default directory is implemented;
+supply a directory explicitly.
 
 .PARAMETER Force
-Indicates whether to delete existing files in the output folder if they have the same name. If this switch is specified, the files are forcibly deleted. If this switch is not specified, the script will terminate with an error if a file with the same name already exists.
+Removes an existing main export file with the same name before exporting.
+Without this switch, an existing main export file produces an error.
+This does not pre-delete a UserForm's companion .frx file.
+
+.INPUTS
+None.
+This function does not accept pipeline input.
+
+.OUTPUTS
+None.
+Writes component files to OutputDirectory. Diagnostics use the error and debug streams.
 
 .EXAMPLE
-Export-ModuleFromExcelFile -InputFile "C:\path\to\your\file.xlsm" -OutputDirectory "C:\path\to\export"
+Export-ModuleFromExcelFile -ModuleName 'Common_Mod' -InputFile 'C:\work\Book.xlsm' -OutputDirectory 'C:\exports'
+Exports Common_Mod to the specified directory.
 
-In this example, the VBA module named `Common_Mod` is extracted from the specified Excel file and saved as a file in the specified output directory.
+.EXAMPLE
+Export-ModuleFromExcelFile -ModuleName 'ThisWorkbook' -InputFile 'C:\work\Book.xlsm' -OutputDirectory 'C:\exports' -Force
+Replaces an existing ThisWorkbook.cls export. Exporting a document module does not
+make it directly importable as the workbook's document module.
+
+.NOTES
+Legacy Excel COM helper. Normal workspace import/export workflows use vba-dev.
+Requires installed Excel, an accessible VBA project, and Trust access to the VBA
+project object model. Close the target workbook before calling this function.
+The current loop also writes errors for components other than the requested one,
+so a successful export can be accompanied by unrelated-component errors.
+Supports WhatIf and Confirm, but Excel instance creation and output-directory
+creation occur outside ShouldProcess. WhatIf is not a side-effect-free preview.
 
 .LINK
-https://docs.microsoft.com/powershell/
+Export-AllModuleFromExcelFile
+
+.LINK
+Import-ModuleToExcelFile
 #>
 function Export-ModuleFromExcelFile {
     [CmdletBinding(SupportsShouldProcess)]

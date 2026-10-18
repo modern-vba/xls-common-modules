@@ -1,29 +1,61 @@
 <#
 .SYNOPSIS
-Exports all standard modules and class modules from an Excel file.
+Exports VBA components from an Excel workbook to a directory.
 
 .DESCRIPTION
-This script extracts all standard modules and class modules from the specified Excel file and saves each module as a file in the specified directory.
+Starts a hidden Excel instance and opens InputFile. With ExportDocumentModule
+omitted, exports standard modules as .bas, class modules as .cls, and UserForms
+as .frm with any companion file produced by VBIDE. Document modules are skipped.
+Closes the workbook without saving and quits the Excel instance after export.
 
 .PARAMETER InputFile
-Specifies the path of the Excel file that contains the modules to export.
+The path to the existing Excel workbook. Required, at position 0.
 
 .PARAMETER OutputDirectory
-Specifies the path of the directory where the extracted module files will be saved.
+The export directory. Required, at position 1. Use an existing empty directory,
+or specify Force to request removal of its existing entries. The implementation
+can create a missing directory, but its earlier directory enumeration may emit
+an error before creation.
 
 .PARAMETER ExportDocumentModule
-Exports worksheet or ThisWorkbook modules.
+Requests worksheet and ThisWorkbook module export. Known implementation limitation:
+when this switch is set, the current extension helper classifies every component
+as .bas, including class modules, UserForms, and document modules. Do not use this
+switch to produce correctly typed component files; use vba-dev export instead.
 
 .PARAMETER Force
-Indicates whether to delete existing files in the output folder if it is not empty. If this switch is specified, the files are forcibly deleted. If this switch is not specified, the script will terminate with an error.
+Removes existing entries matched by OutputDirectory\* before export. Without
+this switch, a nonempty output directory produces an error. Removal uses
+Remove-Item -Force without Recurse; nonempty subdirectories may prompt or fail.
+
+.INPUTS
+None.
+This function does not accept pipeline input.
+
+.OUTPUTS
+None.
+Writes exported component files and informational messages.
 
 .EXAMPLE
-Export-AllModuleFromExcelFile -InputFile "C:\path\to\your\file.xlsm" -OutputDirectory "C:\path\to\export"
+Export-AllModuleFromExcelFile -InputFile 'C:\work\Book.xlsm' -OutputDirectory 'C:\exports'
+Exports standard modules, classes, and UserForms to an existing empty directory.
 
-In this example, all VBA modules from the specified Excel file are extracted and saved as individual files in the specified output directory.
+.EXAMPLE
+Export-AllModuleFromExcelFile -InputFile 'C:\work\Book.xlsm' -OutputDirectory 'C:\exports' -Force
+Removes existing matching entries from the output directory before exporting.
+
+.NOTES
+Legacy Excel COM helper. Normal workspace import/export workflows use vba-dev.
+Requires installed Excel, an accessible VBA project, and Trust access to the VBA
+project object model. Close the target workbook before calling this function.
+Supports WhatIf and Confirm, but Excel instance creation, directory creation,
+and Force cleanup occur outside ShouldProcess. WhatIf can still remove files.
 
 .LINK
-https://docs.microsoft.com/powershell/
+Export-ModuleFromExcelFile
+
+.LINK
+Import-ModuleToExcelFile
 #>
 function Export-AllModuleFromExcelFile {
     [CmdletBinding(SupportsShouldProcess)]
