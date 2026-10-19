@@ -4,7 +4,7 @@ param (
     [string]$BatPath,
 
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Path = @()
+    [string[]]$ScriptArguments = @()
 )
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
@@ -25,13 +25,13 @@ if ($PSBoundParameters.ContainsKey('BatPath')) {
 }
 
 # /nowait controls the BAT wrapper's wait, and is not a target path.
-$path_arguments = @($Path)
-if ($path_arguments.Count -gt 0 -and $path_arguments[0] -eq '/nowait') {
-    $path_arguments = @($path_arguments | Select-Object -Skip 1)
+$arg_list = @($ScriptArguments)
+if ($arg_list.Count -gt 0 -and $arg_list[0] -eq '/nowait') {
+    $arg_list = @($arg_list | Select-Object -Skip 1)
 }
 
 # Add script-specific processing below.
-$arg_file_infos = @(foreach ($arg in $path_arguments) {
+$arg_file_infos = @(foreach ($arg in $arg_list) {
     Resolve-FileSystemPath -Path $arg -BasePath $current_dir
 })
 "bat_dir: " + $bat_dir

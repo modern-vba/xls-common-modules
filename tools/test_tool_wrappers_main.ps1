@@ -219,7 +219,7 @@ function Invoke-TestUpdateCommand {
     $previous_error_action_preference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $output = @(& $windows_powershell -NoProfile -File (Join-Path $tools_root 'update_common_mods_main.ps1') -Path $TargetPath 2>&1 | ForEach-Object { [string]$_ })
+        $output = @(& $windows_powershell -NoProfile -File (Join-Path $tools_root 'update_common_mods_main.ps1') -ScriptArguments $TargetPath 2>&1 | ForEach-Object { [string]$_ })
         $exit_code = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previous_error_action_preference }
@@ -396,26 +396,26 @@ try {
     $workbook = Join-Path $workbook_dir 'Book.xlsm'
     Write-TestFileUtf8 -Path $workbook -Content 'workbook'
 
-    & (Join-Path $tools_root 'exp_mods_main.ps1') -Path $workbook
+    & (Join-Path $tools_root 'exp_mods_main.ps1') -ScriptArguments $workbook
     Test-True -Condition (Test-Path -LiteralPath (Join-Path $workbook_dir 'modules') -PathType Container) -Message 'EXP_MODS did not create the workbook-local source set.'
     $calls = @(Get-Content -LiteralPath $call_log)
     Test-Equal -Expected 1 -Actual $calls.Count -Message 'EXP_MODS should invoke vba-dev once.'
     Test-True -Condition ($calls[0] -like "export --from *Book.xlsm --to *modules") -Message "EXP_MODS called unexpected vba-dev arguments: $($calls[0])"
     Invoke-ExpectedFailure -ExpectedMessage 'target workbook must be a file' -Script {
-        & (Join-Path $tools_root 'exp_mods_main.ps1') -Path $workbook_dir
+        & (Join-Path $tools_root 'exp_mods_main.ps1') -ScriptArguments $workbook_dir
     }
 
     Clear-Content -LiteralPath $call_log
     $module_dir = Join-Path $workbook_dir 'modules'
     Write-TestFileSjis -Path (Join-Path $module_dir 'Module1.bas') -Content "Attribute VB_Name = `"Module1`"`r`n"
-    & (Join-Path $tools_root 'imp_mods_main.ps1') -Path $workbook
+    & (Join-Path $tools_root 'imp_mods_main.ps1') -ScriptArguments $workbook
     $calls = @(Get-Content -LiteralPath $call_log)
     Test-Equal -Expected 1 -Actual $calls.Count -Message 'IMP_MODS should invoke vba-dev once.'
     Test-True -Condition ($calls[0] -like "import --from *modules --to *Book.xlsm") -Message "IMP_MODS called unexpected vba-dev arguments: $($calls[0])"
     Invoke-ExpectedFailure -ExpectedMessage 'workbook-local source set was not found' -Script {
         $other_workbook = Join-Path $temp_root 'Other.xlsm'
         Write-TestFileUtf8 -Path $other_workbook -Content 'workbook'
-        & (Join-Path $tools_root 'imp_mods_main.ps1') -Path $other_workbook
+        & (Join-Path $tools_root 'imp_mods_main.ps1') -ScriptArguments $other_workbook
     }
 
     Clear-Content -LiteralPath $call_log
@@ -425,7 +425,7 @@ try {
     $previous_error_action_preference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $child_output = @(& $windows_powershell -NoProfile -File (Join-Path $tools_root 'update_common_mods_main.ps1') -Path $noninteractive_root 2>&1 | ForEach-Object { [string]$_ })
+        $child_output = @(& $windows_powershell -NoProfile -File (Join-Path $tools_root 'update_common_mods_main.ps1') -ScriptArguments $noninteractive_root 2>&1 | ForEach-Object { [string]$_ })
         $child_exit = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previous_error_action_preference }
@@ -474,7 +474,7 @@ try {
     $project_a = New-TestProject -Root (Join-Path $temp_root 'ProjectA') -ProjectName 'ProjectA' -DocumentName 'BookA'
     $project_b = New-TestProject -Root (Join-Path $temp_root 'ProjectB') -ProjectName 'ProjectB' -DocumentName 'BookB' -LegacyBinPath
     $ignored_project = New-TestProject -Root (Join-Path (Join-Path $temp_root 'bin') 'Ignored') -ProjectName 'Ignored' -DocumentName 'IgnoredBook'
-    & (Join-Path $tools_root 'update_common_mods_main.ps1') -Path $temp_root
+    & (Join-Path $tools_root 'update_common_mods_main.ps1') -ScriptArguments $temp_root
     $calls = @(Get-Content -LiteralPath $call_log)
     Test-True -Condition ($calls -contains "common-module update --project $($project_a.Root)") -Message 'UPDATE_COMMON_MODS did not update ProjectA.'
     Test-True -Condition ($calls -contains "common-module update --project $($project_b.Root)") -Message 'UPDATE_COMMON_MODS did not update ProjectB.'
@@ -498,7 +498,7 @@ try {
         )
     }
     $sync_config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $sync_root 'sync.json') -Encoding UTF8
-    & (Join-Path $tools_root 'sync_mods_main.ps1') -Path $sync_root
+    & (Join-Path $tools_root 'sync_mods_main.ps1') -ScriptArguments $sync_root
     Test-Equal -Expected (Get-Content -LiteralPath (Join-Path $sync_project_a.SourceSetPath 'Shared.bas') -Raw) -Actual (Get-Content -LiteralPath (Join-Path $sync_project_b.SourceSetPath 'Shared.bas') -Raw) -Message 'SYNC_MODS did not copy the newest module content.'
     $calls = @(Get-Content -LiteralPath $call_log)
     Test-Equal -Expected 1 -Actual $calls.Count -Message 'SYNC_MODS should import only changed target workbooks.'
@@ -706,7 +706,7 @@ Get-ChildItem -LiteralPath `$input_dir -File | Sort-Object -Property Name | ForE
     $preserved_doc_target = Join-Path (Join-Path (Join-Path $doc_root 'docs') 'OtherTarget') 'api-reference'
     New-Item -ItemType Directory -Path $preserved_doc_target -Force | Out-Null
     Write-TestFileUtf8 -Path (Join-Path $preserved_doc_target 'keep.txt') -Content 'keep'
-    & (Join-Path $tools_root 'gen_doc_main.ps1') -Path $doc_source
+    & (Join-Path $tools_root 'gen_doc_main.ps1') -ScriptArguments $doc_source
     $doc_api = Join-Path (Join-Path $doc_root 'docs') 'api-reference'
     Test-True -Condition (Test-Path -LiteralPath $doc_api -PathType Container) -Message 'GEN_DOC did not create docs/api-reference under the source-set owner.'
     Test-True -Condition (Test-Path -LiteralPath (Join-Path $doc_root 'docs\api-reference.zip') -PathType Leaf) -Message 'GEN_DOC did not create docs/api-reference.zip.'
@@ -724,7 +724,7 @@ Get-ChildItem -LiteralPath `$input_dir -File | Sort-Object -Property Name | ForE
     $owner_level_api = Join-Path (Join-Path $target_owner 'docs') 'api-reference'
     New-Item -ItemType Directory -Path $owner_level_api -Force | Out-Null
     Write-TestFileUtf8 -Path (Join-Path $owner_level_api 'keep.txt') -Content 'keep'
-    & (Join-Path $tools_root 'gen_doc_main.ps1') -Path $target_source
+    & (Join-Path $tools_root 'gen_doc_main.ps1') -ScriptArguments $target_source
     $target_api = Join-Path (Join-Path (Join-Path $target_owner 'docs') $target_name) 'api-reference'
     Test-True -Condition (Test-Path -LiteralPath $target_api -PathType Container) -Message 'GEN_DOC did not create docs/<target>/api-reference for a src child source set.'
     Test-True -Condition (Test-Path -LiteralPath ($target_api + '.zip') -PathType Leaf) -Message 'GEN_DOC did not create docs/<target>/api-reference.zip.'
@@ -735,7 +735,7 @@ Get-ChildItem -LiteralPath `$input_dir -File | Sort-Object -Property Name | ForE
     $src_source = Join-Path $src_owner 'src'
     New-Item -ItemType Directory -Path $src_source -Force | Out-Null
     Write-TestFileSjis -Path (Join-Path $src_source 'RootForm.frm') -Content "VERSION 5.00`r`nAttribute VB_Name = `"RootForm`"`r`n"
-    $warnings = & (Join-Path $tools_root 'gen_doc_main.ps1') -Path $src_source 3>&1
+    $warnings = & (Join-Path $tools_root 'gen_doc_main.ps1') -ScriptArguments $src_source 3>&1
     Test-True -Condition (($warnings | Out-String) -like '*normally a container directory*') -Message 'GEN_DOC did not warn when the source directory itself was named src.'
     $src_api = Join-Path (Join-Path $src_owner 'docs') 'api-reference'
     Test-True -Condition (Test-Path -LiteralPath $src_api -PathType Container) -Message 'GEN_DOC did not create owner-level docs/api-reference for a src source directory.'
@@ -746,7 +746,7 @@ Get-ChildItem -LiteralPath `$input_dir -File | Sort-Object -Property Name | ForE
     New-Item -ItemType Directory -Path (Join-Path $empty_source 'Nested') -Force | Out-Null
     Write-TestFileSjis -Path (Join-Path (Join-Path $empty_source 'Nested') 'NestedOnly.bas') -Content "Attribute VB_Name = `"NestedOnly`"`r`n"
     Invoke-ExpectedFailure -ExpectedMessage 'No VBA source files were found in source directory' -Script {
-        & (Join-Path $tools_root 'gen_doc_main.ps1') -Path $empty_source
+        & (Join-Path $tools_root 'gen_doc_main.ps1') -ScriptArguments $empty_source
     }
 
     Write-Host 'Tool wrapper tests passed.'

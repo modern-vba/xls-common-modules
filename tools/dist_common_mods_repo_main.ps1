@@ -4,7 +4,7 @@ param (
     [string]$BatPath,
 
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Path = @()
+    [string[]]$ScriptArguments = @()
 )
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
@@ -26,11 +26,12 @@ else {
 }
 
 # /nowait belongs to the BAT launcher, not the target paths.
-$path_arguments = @($Path)
-if ($path_arguments.Count -gt 0 -and $path_arguments[0] -eq '/nowait') {
-    $path_arguments = @($path_arguments | Select-Object -Skip 1)
+$arg_list = @($ScriptArguments)
+if ($arg_list.Count -gt 0 -and $arg_list[0] -eq '/nowait') {
+    $arg_list = @($arg_list | Select-Object -Skip 1)
 }
 
+# Add script-specific processing below.
 $WarningPreference = 'Continue'
 
 $invocation_working_directory = (Get-Location).ProviderPath
@@ -932,7 +933,7 @@ function Copy-DistributionPackage {
 }
 
 try {
-    $search_root = Resolve-DistributionSearchRoot -Arguments $path_arguments -InvocationWorkingDirectory $invocation_working_directory
+    $search_root = Resolve-DistributionSearchRoot -Arguments $arg_list -InvocationWorkingDirectory $invocation_working_directory
     $search_root_inventory = @(Get-ChildItem -LiteralPath $search_root.FullName -Force -ErrorAction Stop)
     $source_repository = Get-WrapperSourceRepository -InvocationWorkingDirectory $invocation_working_directory
     $source_package = Read-DistributionSourcePackage -SourceRepository $source_repository

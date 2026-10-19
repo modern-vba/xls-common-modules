@@ -4,7 +4,7 @@ param (
     [string]$BatPath,
 
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Path = @()
+    [string[]]$ScriptArguments = @()
 )
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
@@ -26,9 +26,9 @@ else {
 }
 
 # /nowait belongs to the BAT launcher, not the target paths.
-$path_arguments = @($Path)
-if ($path_arguments.Count -gt 0 -and $path_arguments[0] -eq '/nowait') {
-    $path_arguments = @($path_arguments | Select-Object -Skip 1)
+$arg_list = @($ScriptArguments)
+if ($arg_list.Count -gt 0 -and $arg_list[0] -eq '/nowait') {
+    $arg_list = @($arg_list | Select-Object -Skip 1)
 }
 
 $WarningPreference = 'Continue'
@@ -402,10 +402,10 @@ function Test-CollectionPackageMatch {
 }
 
 try {
-    if ($path_arguments.Count -ne 1) {
+    if ($arg_list.Count -ne 1) {
         throw 'COLLECT requires exactly one Collection Search Root argument.'
     }
-    $search_root_argument = $path_arguments[0]
+    $search_root_argument = $arg_list[0]
     if ([string]::IsNullOrWhiteSpace($search_root_argument)) {
         throw 'Collection Search Root is empty.'
     }

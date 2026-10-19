@@ -4,7 +4,7 @@ param (
     [string]$BatPath,
 
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Path = @()
+    [string[]]$ScriptArguments = @()
 )
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
@@ -26,16 +26,17 @@ else {
 }
 
 # /nowait belongs to the BAT launcher, not the target paths.
-$path_arguments = @($Path)
-if ($path_arguments.Count -gt 0 -and $path_arguments[0] -eq '/nowait') {
-    $path_arguments = @($path_arguments | Select-Object -Skip 1)
+$arg_list = @($ScriptArguments)
+if ($arg_list.Count -gt 0 -and $arg_list[0] -eq '/nowait') {
+    $arg_list = @($arg_list | Select-Object -Skip 1)
 }
 
-if ($path_arguments.Count -ne 1) {
+# Add script-specific processing below.
+if ($arg_list.Count -ne 1) {
     throw 'imp_mods requires exactly one path argument.'
 }
-$arg_file_infos = @(foreach ($argument in $path_arguments) {
-    Resolve-FileSystemPath -Path $argument -BasePath $current_dir
+$arg_file_infos = @(foreach ($arg_item in $arg_list) {
+    Resolve-FileSystemPath -Path $arg_item -BasePath $current_dir
 })
 $arg_path = ''
 $arg_dir = ''
