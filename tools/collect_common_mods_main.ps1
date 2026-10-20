@@ -86,7 +86,7 @@ function Get-VbaProjectSourceDirectories {
     )
 
     $excluded_directory_names = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($name in @('.backups', '.git', '.out-of-scope', '.tmp', '.venv', '.vs', '.vscode-test', 'artifacts', 'bin', 'common_modules_repo', 'node_modules', 'obj', 'out', 'packages', 'publish', 'temp', 'TestResults')) {
+    foreach ($name in @('.backups', '.git', '.local', '.out-of-scope', '.tmp', '.venv', '.vs', '.vscode-test', 'artifacts', 'bin', 'common_modules_repo', 'node_modules', 'obj', 'out', 'packages', 'publish', 'temp', 'TestResults')) {
         [void]$excluded_directory_names.Add($name)
     }
 

@@ -281,9 +281,11 @@ try {
     }
     Write-TestFile -Path (Join-Path $boundary_linked_project 'vba-project.json') -Content ($boundary_project | ConvertTo-Json -Depth 8) -Encoding (New-Object System.Text.UTF8Encoding($false))
 
-    $excluded_project_root = Join-Path $boundary_real_root '.GiT\IgnoredProject'
-    New-Item -ItemType Directory -Path $excluded_project_root -Force | Out-Null
-    Write-TestFile -Path (Join-Path $excluded_project_root 'vba-project.json') -Content '{ invalid excluded json' -Encoding (New-Object System.Text.UTF8Encoding($false))
+    foreach ($excluded_directory_name in @('.GiT', '.LoCaL')) {
+        $excluded_project_root = Join-Path (Join-Path $boundary_real_root $excluded_directory_name) 'IgnoredProject'
+        New-Item -ItemType Directory -Path $excluded_project_root -Force | Out-Null
+        Write-TestFile -Path (Join-Path $excluded_project_root 'vba-project.json') -Content '{ invalid excluded json' -Encoding (New-Object System.Text.UTF8Encoding($false))
+    }
     $boundary_ignored_discovery = Join-Path $temp_root 'boundary-ignored-discovery'
     New-Item -ItemType Directory -Path $boundary_ignored_discovery -Force | Out-Null
     Write-TestFile -Path (Join-Path $boundary_ignored_discovery 'vba-project.json') -Content '{ invalid linked json' -Encoding (New-Object System.Text.UTF8Encoding($false))
