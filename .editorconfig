@@ -3,3 +3,9 @@
 charset = utf-16le
 end_of_line = crlf
 insert_final_newline = true
+
+# VBA project manifests use UTF-16 LE with BOM.
+[vba-project.json]
+charset = utf-16le
+end_of_line = crlf
+insert_final_newline = true

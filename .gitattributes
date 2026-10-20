@@ -5,3 +5,6 @@
 *.ps1xml text working-tree-encoding=UTF-16LE-BOM eol=crlf
 *.pssc text working-tree-encoding=UTF-16LE-BOM eol=crlf
 *.psrc text working-tree-encoding=UTF-16LE-BOM eol=crlf
+
+# VBA project manifests: UTF-16 LE with BOM and CRLF in the working tree.
+vba-project.json text working-tree-encoding=UTF-16LE-BOM eol=crlf
