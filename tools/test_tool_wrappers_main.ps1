@@ -365,11 +365,11 @@ try {
     $call_log = Join-Path $temp_root 'vba-dev-calls.txt'
     $fake_vba_dev = Join-Path $temp_root 'vba-dev.cmd'
     $fake_capabilities = Join-Path $temp_root 'capabilities.json'
-    Write-TestFileUtf8 -Path $fake_capabilities -Content '{"contractVersion":"1.0","featureVersions":{"projectManifest.optionalBinPath":"1.0","build.sourceWorkbook":"1.0","test.sourceWorkbook":"1.0"},"commands":{"build":{"outputSchemaVersion":"3.0"},"test":{"outputSchemaVersion":"1.2"},"common-module update":{"outputSchemaVersion":"1.0"}}}'
+    Write-TestFileUtf8 -Path $fake_capabilities -Content '{"contractVersion":"1.0","featureVersions":{"projectManifest.optionalBinPath":"1.0","build.sourceWorkbook":"2.0","test.sourceWorkbook":"1.0"},"commands":{"build":{"outputSchemaVersion":"3.0"},"test":{"outputSchemaVersion":"1.2"},"common-module update":{"outputSchemaVersion":"1.0"}}}'
     $env:VBA_DEV_CAPABILITIES = $fake_capabilities
     [System.IO.File]::WriteAllText(
         $fake_vba_dev,
-        "@echo off`r`nif /i `"%~1`"==`"capabilities`" (`r`n type `"%VBA_DEV_CAPABILITIES%`"`r`n exit /b 0`r`n)`r`necho %*>> `"%VBA_DEV_CALLS%`"`r`nif /i `"%~1`"==`"build`" if not `"%~6 %~7`"==`"--interactive false`" exit /b 71`r`nif /i `"%~1`"==`"build`" if defined VBA_DEV_TEST_BUILD_EXIT exit /b %VBA_DEV_TEST_BUILD_EXIT%`r`nexit /b 0`r`n",
+        "@echo off`r`nif /i `"%~1`"==`"capabilities`" (`r`n type `"%VBA_DEV_CAPABILITIES%`"`r`n exit /b 0`r`n)`r`nif /i `"%~1`"==`"build`" echo Warning: retained staging 1>&2`r`necho %*>> `"%VBA_DEV_CALLS%`"`r`nif /i `"%~1`"==`"build`" if not `"%~6 %~7`"==`"--interactive false`" exit /b 71`r`nif /i `"%~1`"==`"build`" if defined VBA_DEV_TEST_BUILD_EXIT exit /b %VBA_DEV_TEST_BUILD_EXIT%`r`nexit /b 0`r`n",
         [System.Text.Encoding]::GetEncoding(932))
     $env:VBA_DEV_EXE = $fake_vba_dev
     $env:VBA_DEV_CALLS = $call_log
@@ -430,19 +430,31 @@ try {
     }
     finally { $ErrorActionPreference = $previous_error_action_preference }
     Test-Equal -Expected 0 -Actual $child_exit -Message "A bin-free UPDATE must explicitly disable CLI prompting: $($child_output -join [Environment]::NewLine)"
+    Test-True -Condition (($child_output -join ' ') -like '*Warning: retained staging*') -Message 'A completed Build warning must remain visible without changing UPDATE success.'
     $calls = @(Get-Content -LiteralPath $call_log)
     Test-True -Condition ($calls -contains "build --project $noninteractive_root --document SourceBook --interactive false") -Message 'UPDATE must route ordinary Build with explicit noninteractive consent policy.'
     Test-True -Condition (-not (Test-Path -LiteralPath (Join-Path $noninteractive_root 'bin'))) -Message 'UPDATE must not create workbook-bin output.'
 
     Clear-Content -LiteralPath $call_log
     $compatible_capabilities = Get-Content -LiteralPath $fake_capabilities -Raw
-    Write-TestFileUtf8 -Path $fake_capabilities -Content ($compatible_capabilities -replace '"build.sourceWorkbook":"1.0"', '"build.sourceWorkbook":"0.0"')
+    Write-TestFileUtf8 -Path $fake_capabilities -Content ($compatible_capabilities -replace '"build.sourceWorkbook":"2.0"', '"build.sourceWorkbook":"1.0"')
     $incompatible_result = Invoke-TestUpdateCommand -TargetPath $noninteractive_root
     Test-Equal -Expected 1 -Actual $incompatible_result.ExitCode -Message 'UPDATE must reject the selected incompatible CLI before any source mutation.'
     Test-True -Condition ($incompatible_result.Output -like '*build.sourceWorkbook*') -Message 'The selected incompatible capability must be identified.'
     Test-Equal -Expected 0 -Actual @(Get-Content -LiteralPath $call_log).Count -Message 'An incompatible selected CLI must not receive update or build commands.'
     Write-TestFileUtf8 -Path $fake_capabilities -Content $compatible_capabilities
 
+    foreach ($invalid_capabilities in @(
+        ($compatible_capabilities -replace '"build.sourceWorkbook":"2.0",', ''),
+        'not-json'
+    )) {
+        Clear-Content -LiteralPath $call_log
+        Write-TestFileUtf8 -Path $fake_capabilities -Content $invalid_capabilities
+        $invalid_result = Invoke-TestUpdateCommand -TargetPath $noninteractive_root
+        Test-Equal -Expected 1 -Actual $invalid_result.ExitCode -Message 'Missing or malformed capabilities must fail before mutation.'
+        Test-Equal -Expected 0 -Actual @(Get-Content -LiteralPath $call_log).Count -Message 'Invalid capabilities must not start update or build commands.'
+        Write-TestFileUtf8 -Path $fake_capabilities -Content $compatible_capabilities
+    }
     $env:VBA_DEV_TEST_BUILD_EXIT = '19'
     $failed_build_result = Invoke-TestUpdateCommand -TargetPath $noninteractive_root
     Test-Equal -Expected 19 -Actual $failed_build_result.ExitCode -Message 'UPDATE PowerShell must preserve the child failure exit result.'

@@ -87,7 +87,7 @@ function Resolve-SourceWorkbookVbaDevExecutable {
     $requirements = @(
         @{ Name = 'contractVersion'; Actual = $capabilities.contractVersion; Required = '1.0' },
         @{ Name = 'projectManifest.optionalBinPath'; Actual = $capabilities.featureVersions.'projectManifest.optionalBinPath'; Required = '1.0' },
-        @{ Name = 'build.sourceWorkbook'; Actual = $capabilities.featureVersions.'build.sourceWorkbook'; Required = '1.0' },
+        @{ Name = 'build.sourceWorkbook'; Actual = $capabilities.featureVersions.'build.sourceWorkbook'; Required = '2.0' },
         @{ Name = 'build outputSchemaVersion'; Actual = $capabilities.commands.build.outputSchemaVersion; Required = '3.0' },
         @{ Name = 'common-module update outputSchemaVersion'; Actual = $capabilities.commands.'common-module update'.outputSchemaVersion; Required = '1.0' }
     )

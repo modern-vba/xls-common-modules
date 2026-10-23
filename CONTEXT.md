@@ -106,7 +106,7 @@ F5 and Restart against the exact source workbook and Excel process/window. The D
 _Avoid_: dirty-workbook consent, whole-workbook rollback, arbitrary active workbook
 
 **CLI capability admission**:
-Verification of the actual selected `vba-dev.exe` command/feature contract before a wrapper depends on changed behavior. Source-workbook features and command output schemas are separately versioned; a release version string alone does not prove compatibility. An existing selected incompatible provider is a failure, not authority to silently try another executable.
+Verification of the actual selected `vba-dev.exe` command/feature contract before a wrapper depends on changed behavior. Source-workbook UPDATE requires `build.sourceWorkbook` 2.0; a completed Build with cleanup warnings remains successful, and warnings stay visible. Source-workbook features and command output schemas are separately versioned; a release version string alone does not prove compatibility. An existing selected incompatible provider is a failure, not authority to silently try another executable.
 _Avoid_: release version comparison, implicit fallback after incompatibility
 
 **Workbook-local source set**:

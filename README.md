@@ -60,7 +60,7 @@ Call WsSrv.WriteCell(target_cell, "value", TypeConvert:=False)
 - Ordinary Build, Test, and Debug may reuse the exact already-open manifest-selected source workbook and its Excel process/window. Build saves it in place; Test and Debug do not initiate Save. Build/Test still require consent when that workbook is dirty; Debug does not.
 - Keep standalone Import/Export and their `IMP_MODS`, `EXP_MODS`, and `SYNC_MODS` targets closed, as before. Publish behavior is unchanged.
 - API reference generation requires Doxygen. `tools/DoxyVB6/DoxyVB6.exe` is used as the VBA input filter.
-- Tool wrappers resolve `vba-dev.exe` in this order: a valid `VBA_DEV_EXE` path, the repository-bundled `tools\vba-dev\vba-dev.exe`, then `PATH`. Source-workbook UPDATE checks the chosen executable's declared capabilities, not its release version alone; an existing incompatible provider fails rather than silently falling back.
+- Tool wrappers resolve `vba-dev.exe` in this order: a valid `VBA_DEV_EXE` path, the repository-bundled `tools\vba-dev\vba-dev.exe`, then `PATH`. Source-workbook UPDATE requires the chosen executable's `build.sourceWorkbook` 2.0 contract and checks its declared capabilities, not its release version alone; an existing incompatible provider fails rather than silently falling back.
 
 ## CommonModules vba-dev Project
 
