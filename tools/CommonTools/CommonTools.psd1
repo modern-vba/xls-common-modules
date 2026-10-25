@@ -27,7 +27,7 @@
     CompanyName       = 'Unknown'
 
     # Copyright statement for this module
-    Copyright         = '(c) CES Co.Ltd. All rights reserved.'
+    Copyright         = '(c) Original copyright holder. All rights reserved.'
 
     # Description of the functionality provided by this module
     # Description = ''
